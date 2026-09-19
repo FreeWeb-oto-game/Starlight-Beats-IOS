@@ -20,15 +20,22 @@ jobs:
         run: npm install
 
       - name: Add iOS platform
-        run: npx cap add ios
+        run: npx cap add ios --packagemanager SPM
 
       - name: Sync Capacitor
         run: npx cap sync ios
 
+      - name: Resolve Swift Package dependencies
+        run: |
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project ios/App/App.xcodeproj \
+            -scheme App
+
       - name: Build unsigned iOS app
         run: |
           xcodebuild \
-            -workspace ios/App/App.xcworkspace \
+            -project ios/App/App.xcodeproj \
             -scheme App \
             -configuration Debug \
             -sdk iphoneos \
