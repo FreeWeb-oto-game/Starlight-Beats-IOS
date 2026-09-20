@@ -9,7 +9,8 @@
     "cap:open:ios": "cap open ios"
   },
   "dependencies": {
-    "@capacitor/core": "8.5.2"
+    "@capacitor/core": "8.5.2",
+    "@capacitor/haptics": "8.0.2"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",

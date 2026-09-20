@@ -2,951 +2,235 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#071925" />
     <meta name="description" content="Melodiniq (CHUNITHM X-VERSE-X / onoken a.k.a. owl＊tree) 風 8レーンタッチ音ゲーと譜面エディター" />
     <title>Starlight Beats | Melodiniq</title>
-    <style>
-
-* {
-  box-sizing: border-box;
-}
-
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  background: #05070f;
-  color: #eaf6ff;
-  font-family: "Noto Sans JP", "Orbitron", system-ui, sans-serif;
-  overflow: hidden;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-
-:root {
-  --neon-cyan: #4be8ff;
-  --neon-cyan-soft: rgba(75, 232, 255, 0.35);
-  --neon-pink: #ff5ad6;
-  --neon-gold: #ffd23f;
-  --neon-green: #71ff99;
-  --neon-purple: #b26bff;
-  --neon-red: #ff5566;
-  --panel-bg: rgba(7, 14, 26, 0.82);
-  --panel-border: rgba(120, 230, 255, 0.35);
-  --font-display: "Orbitron", "Noto Sans JP", sans-serif;
-  --font-mono: "Share Tech Mono", monospace;
-}
-
-button {
-  font-family: inherit;
-  cursor: pointer;
-  border: none;
-  background: none;
-  color: inherit;
-}
-
-input, select {
-  font-family: inherit;
-}
-
-.app-shell {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(circle at 15% 15%, rgba(255, 90, 214, 0.18), transparent 45%),
-    radial-gradient(circle at 85% 85%, rgba(75, 232, 255, 0.18), transparent 45%),
-    linear-gradient(160deg, #04060c 0%, #0a1220 55%, #050810 100%);
-  padding: 1.4vh;
-}
-
-.rotate-hint {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  background: #030509;
-  color: var(--neon-cyan);
-  text-align: center;
-  padding: 2rem;
-}
-
-.rotate-icon {
-  font-size: 3rem;
-  animation: spin-hint 1.6s ease-in-out infinite;
-}
-
-.rotate-hint strong {
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  letter-spacing: 0.05em;
-}
-
-.rotate-hint small {
-  color: rgba(234, 246, 255, 0.6);
-  font-size: 0.75rem;
-}
-
-@keyframes spin-hint {
-  0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(-90deg); }
-}
-
-@media (orientation: portrait) and (max-width: 900px) {
-  .rotate-hint {
-    display: flex;
-  }
-  .app-shell {
-    display: none;
-  }
-}
-
-.game-stage {
-  position: relative;
-  width: min(100%, calc((100vh - 2.8vh) * 16 / 9));
-  height: min(100%, calc((100vw - 2.8vh) * 9 / 16));
-  aspect-ratio: 16 / 9;
-  border-radius: 18px;
-  overflow: hidden;
-  background: #01050a;
-  box-shadow:
-    0 0 0 1px rgba(75, 232, 255, 0.25),
-    0 0 40px rgba(75, 232, 255, 0.18),
-    0 25px 60px rgba(0, 0, 0, 0.65);
-}
-
-.game-stage::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
-  background: linear-gradient(
-    100deg,
-    transparent 0%,
-    rgba(255, 90, 214, 0.5) 2%,
-    rgba(255, 210, 63, 0.5) 3%,
-    rgba(113, 255, 153, 0.5) 4%,
-    rgba(75, 232, 255, 0.5) 5%,
-    transparent 6%
-  );
-  background-size: 100% 6px;
-  background-repeat: no-repeat;
-  background-position: 0 0;
-  opacity: 0.85;
-}
-
-#gameCanvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.mode-nav {
-  position: absolute;
-  top: 0.9%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 50;
-  display: flex;
-  gap: 0.4vw;
-  padding: 0.35vh 0.5vw;
-  background: rgba(3, 6, 12, 0.88);
-  border: 1px solid var(--panel-border);
-  border-radius: 999px;
-}
-
-.mode-button {
-  font-family: var(--font-display);
-  font-size: clamp(0.6rem, 1.1vw, 0.85rem);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  padding: 0.5vh 1.4vw;
-  border-radius: 999px;
-  color: rgba(234, 246, 255, 0.55);
-  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.mode-button.is-active {
-  color: #04060c;
-  background: linear-gradient(120deg, var(--neon-cyan), var(--neon-purple));
-  box-shadow: 0 0 14px rgba(75, 232, 255, 0.6);
-}
-
-.score-hud {
-  position: absolute;
-  top: 0.9%;
-  right: 1.1%;
-  z-index: 30;
-  display: flex;
-  align-items: stretch;
-  gap: 0.6vw;
-}
-
-.rank-badge {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: clamp(48px, 5.4vw, 74px);
-  border-radius: 12px;
-  background: linear-gradient(160deg, rgba(255, 210, 63, 0.22), rgba(255, 90, 214, 0.14));
-  border: 1px solid rgba(255, 210, 63, 0.55);
-  box-shadow: 0 0 14px rgba(255, 210, 63, 0.25) inset;
-}
-
-.rank-badge strong {
-  font-family: var(--font-display);
-  font-size: clamp(1.2rem, 2.1vw, 1.9rem);
-  color: var(--neon-gold);
-  text-shadow: 0 0 10px rgba(255, 210, 63, 0.7);
-  line-height: 1;
-}
-
-.rank-badge span {
-  font-size: 0.5rem;
-  letter-spacing: 0.14em;
-  color: rgba(234, 246, 255, 0.55);
-  margin-top: 0.2vh;
-}
-
-.score-board {
-  min-width: clamp(190px, 24vw, 340px);
-  padding: 0.6vh 1vw;
-  border-radius: 12px;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 0 16px rgba(75, 232, 255, 0.12);
-}
-
-.score-topline {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
-  font-family: var(--font-display);
-  font-size: clamp(0.55rem, 1vw, 0.75rem);
-  letter-spacing: 0.1em;
-}
-
-.score-topline span:first-child {
-  color: rgba(234, 246, 255, 0.55);
-}
-
-.score-topline span:last-child {
-  color: var(--neon-cyan);
-  text-shadow: 0 0 8px rgba(75, 232, 255, 0.6);
-}
-
-.song-meta {
-  margin: 0.1vh 0 0.3vh;
-  font-size: clamp(0.5rem, 0.85vw, 0.65rem);
-  color: rgba(234, 246, 255, 0.45);
-  letter-spacing: 0.03em;
-}
-
-.score-rail {
-  position: relative;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-  margin: 0.3vh 0;
-}
-
-.score-rail span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 0%;
-  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-gold));
-  box-shadow: 0 0 8px rgba(75, 232, 255, 0.8);
-  transition: width 0.25s ease;
-}
-
-.score-board strong#score {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: clamp(1.1rem, 2.1vw, 1.7rem);
-  letter-spacing: 0.06em;
-  color: #ffffff;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
-}
-
-.life-hud {
-  position: absolute;
-  top: 0.9%;
-  left: 1.1%;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 0.5vw;
-  padding: 0.6vh 0.8vw;
-  border-radius: 999px;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-}
-
-.life-label {
-  font-family: var(--font-display);
-  font-size: clamp(0.5rem, 0.9vw, 0.7rem);
-  letter-spacing: 0.1em;
-  color: rgba(234, 246, 255, 0.55);
-}
-
-.life-rail {
-  position: relative;
-  width: clamp(70px, 9vw, 140px);
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-
-.life-rail span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 100%;
-  background: linear-gradient(90deg, var(--neon-red), var(--neon-gold), var(--neon-green));
-  transition: width 0.25s ease;
-}
-
-.life-hud strong#lifeValue {
-  font-family: var(--font-mono);
-  font-size: clamp(0.7rem, 1.1vw, 0.9rem);
-  min-width: 2.6ch;
-  color: var(--neon-green);
-}
-
-.pause-button {
-  width: clamp(26px, 2.6vw, 36px);
-  height: clamp(26px, 2.6vw, 36px);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--panel-border);
-  color: var(--neon-cyan);
-  transition: background 0.2s ease, transform 0.15s ease;
-}
-
-.pause-button:active {
-  transform: scale(0.9);
-}
-
-.judgement {
-  position: absolute;
-  top: 34%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0.7);
-  z-index: 40;
-  font-family: var(--font-display);
-  font-size: clamp(1.2rem, 3.4vw, 2.6rem);
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  opacity: 0;
-  text-shadow: 0 0 18px currentColor;
-  pointer-events: none;
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-.judgement.is-active {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-  animation: judgement-pop 0.33s ease-out;
-}
-
-@keyframes judgement-pop {
-  0% { transform: translate(-50%, -50%) scale(0.6); }
-  35% { transform: translate(-50%, -50%) scale(1.12); }
-  100% { transform: translate(-50%, -50%) scale(1); }
-}
-
-.combo-burst {
-  position: absolute;
-  top: 46%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-
-.combo-burst.is-active {
-  opacity: 1;
-  animation: combo-pulse 0.5s ease-out;
-}
-
-.combo-burst strong {
-  font-family: var(--font-mono);
-  font-size: clamp(1.6rem, 4.4vw, 3.4rem);
-  color: var(--neon-gold);
-  text-shadow: 0 0 20px rgba(255, 210, 63, 0.8);
-  line-height: 1;
-}
-
-.combo-burst span {
-  font-family: var(--font-display);
-  font-size: clamp(0.5rem, 1vw, 0.75rem);
-  letter-spacing: 0.28em;
-  color: rgba(234, 246, 255, 0.7);
-}
-
-@keyframes combo-pulse {
-  0% { transform: translate(-50%, -50%) scale(0.85); }
-  40% { transform: translate(-50%, -50%) scale(1.08); }
-  100% { transform: translate(-50%, -50%) scale(1); }
-}
-
-.start-panel {
-  position: absolute;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1.1vh;
-  background: radial-gradient(circle at 50% 40%, rgba(75, 232, 255, 0.14), rgba(2, 4, 9, 0.97) 70%);
-  transition: opacity 0.25s ease, visibility 0.25s ease;
-}
-
-.start-panel.is-hidden {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.start-song-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.4rem, 4vw, 2.6rem);
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  background: linear-gradient(120deg, var(--neon-cyan), var(--neon-pink), var(--neon-gold));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow: 0 0 30px rgba(75, 232, 255, 0.35);
-}
-
-.start-button {
-  font-family: var(--font-display);
-  font-size: clamp(1rem, 2vw, 1.4rem);
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  padding: 1.1vh 3.4vw;
-  border-radius: 999px;
-  color: #04060c;
-  background: linear-gradient(120deg, var(--neon-gold), var(--neon-pink));
-  box-shadow: 0 0 26px rgba(255, 90, 214, 0.55);
-  animation: start-glow 1.8s ease-in-out infinite;
-}
-
-@keyframes start-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(255, 90, 214, 0.45); }
-  50% { box-shadow: 0 0 34px rgba(255, 210, 63, 0.7); }
-}
-
-.start-button:active {
-  transform: scale(0.96);
-}
-
-.sound-button {
-  font-family: var(--font-display);
-  font-size: clamp(0.6rem, 1vw, 0.8rem);
-  letter-spacing: 0.1em;
-  padding: 0.7vh 1.6vw;
-  border-radius: 999px;
-  color: rgba(234, 246, 255, 0.75);
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.sound-button[aria-pressed="true"] {
-  color: rgba(234, 246, 255, 0.4);
-  border-color: rgba(234, 246, 255, 0.2);
-}
-
-.editor-screen {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 0.8vh;
-  padding: 3.4vh 1.2vw 1.2vh;
-  background: linear-gradient(180deg, #05070f 0%, #0a1424 100%);
-  overflow: auto;
-}
-
-.editor-screen[aria-hidden="true"] {
-  display: none;
-}
-
-body[data-mode="editor"] #gameCanvas,
-body[data-mode="editor"] .score-hud,
-body[data-mode="editor"] .life-hud,
-body[data-mode="editor"] .judgement,
-body[data-mode="editor"] .combo-burst,
-body[data-mode="editor"] .start-panel {
-  display: none;
-}
-
-.editor-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  border-bottom: 1px solid var(--panel-border);
-  padding-bottom: 0.6vh;
-}
-
-.editor-header p {
-  margin: 0;
-  font-size: clamp(0.5rem, 0.9vw, 0.65rem);
-  letter-spacing: 0.3em;
-  color: var(--neon-pink);
-}
-
-.editor-header h1 {
-  margin: 0.15rem 0 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.1rem, 2.4vw, 1.7rem);
-  letter-spacing: 0.08em;
-  color: var(--neon-cyan);
-  text-shadow: 0 0 14px rgba(75, 232, 255, 0.5);
-}
-
-.editor-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.tool-button {
-  position: relative;
-  font-family: var(--font-display);
-  font-size: clamp(0.55rem, 0.95vw, 0.75rem);
-  letter-spacing: 0.08em;
-  padding: 0.6vh 1.1vw;
-  border-radius: 8px;
-  color: #04060c;
-  background: linear-gradient(120deg, var(--neon-cyan), var(--neon-purple));
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.tool-button:hover {
-  box-shadow: 0 0 14px rgba(75, 232, 255, 0.5);
-}
-
-.tool-button:active {
-  transform: scale(0.95);
-}
-
-.file-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.file-button input[type="file"] {
-  display: none;
-}
-
-.danger-button {
-  background: linear-gradient(120deg, var(--neon-red), #ff9166);
-  color: #200;
-}
-
-.editor-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1vw;
-  padding: 0.8vh 0;
-}
-
-.editor-meta label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  font-size: 0.6rem;
-  letter-spacing: 0.1em;
-  color: rgba(234, 246, 255, 0.55);
-}
-
-.editor-meta input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  padding: 0.4rem 0.6rem;
-  color: #eaf6ff;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  min-width: 90px;
-}
-
-.editor-meta input:focus-visible {
-  outline: 2px solid var(--neon-cyan);
-}
-
-#chartSaveState {
-  margin-left: auto;
-  font-family: var(--font-display);
-  font-size: 0.6rem;
-  letter-spacing: 0.16em;
-  padding: 0.35rem 0.7rem;
-  border-radius: 999px;
-  background: rgba(113, 255, 153, 0.15);
-  border: 1px solid rgba(113, 255, 153, 0.5);
-  color: var(--neon-green);
-}
-
-.editor-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 2.1fr) minmax(220px, 1fr);
-  gap: 1vw;
-  flex: 1;
-  min-height: 0;
-}
-
-.timeline-panel, .inspector-panel, .note-list-panel {
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: 12px;
-  padding: 0.8vh 0.9vw;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.panel-heading {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-display);
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
-  color: rgba(234, 246, 255, 0.55);
-  margin-bottom: 0.5vh;
-}
-
-.panel-heading span:last-child {
-  color: var(--neon-gold);
-}
-
-.chart-grid {
-  flex: 1;
-  min-height: 260px;
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  grid-auto-rows: 1fr;
-  gap: 2px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  padding: 2px;
-  position: relative;
-  overflow: hidden;
-}
-
-.chart-cell {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 3px;
-  transition: background 0.12s ease;
-}
-
-.chart-cell:hover {
-  background: rgba(75, 232, 255, 0.22);
-}
-
-.grid-note {
-  border-radius: 4px;
-  pointer-events: none;
-  box-shadow: 0 0 8px currentColor;
-  margin: 1px;
-}
-
-.grid-note--tap {
-  background: #ff6a79;
-  color: #ff6a79;
-}
-
-.grid-note--gold {
-  background: var(--neon-gold);
-  color: var(--neon-gold);
-}
-
-.grid-note--flick {
-  background: var(--neon-purple);
-  color: var(--neon-purple);
-}
-
-.grid-note--hold {
-  background: var(--neon-green);
-  color: var(--neon-green);
-}
-
-.lane-labels {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  margin-top: 0.4vh;
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  color: rgba(234, 246, 255, 0.45);
-}
-
-.inspector-panel {
-  overflow-y: auto;
-}
-
-.note-form {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
-  margin-bottom: 0.6vh;
-}
-
-.note-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  font-size: 0.55rem;
-  letter-spacing: 0.08em;
-  color: rgba(234, 246, 255, 0.55);
-}
-
-.note-form input, .note-form select {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  padding: 0.35rem 0.5rem;
-  color: #eaf6ff;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-}
-
-.add-note-button {
-  font-family: var(--font-display);
-  font-size: 0.7rem;
-  letter-spacing: 0.1em;
-  padding: 0.6vh 0;
-  border-radius: 8px;
-  background: linear-gradient(120deg, var(--neon-green), var(--neon-cyan));
-  color: #04060c;
-  margin-bottom: 0.6vh;
-}
-
-.add-note-button:active {
-  transform: scale(0.97);
-}
-
-.editor-tip {
-  font-size: 0.58rem;
-  line-height: 1.5;
-  color: rgba(234, 246, 255, 0.45);
-  margin: 0;
-}
-
-.note-list-panel {
-  max-height: 22vh;
-}
-
-.note-list {
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.note-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.35rem 0.6rem;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-}
-
-.note-row button {
-  font-family: var(--font-display);
-  font-size: 0.55rem;
-  letter-spacing: 0.08em;
-  color: var(--neon-red);
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 85, 102, 0.4);
-  transition: background 0.15s ease;
-}
-
-.note-row button:hover {
-  background: rgba(255, 85, 102, 0.18);
-}
-
-.note-empty {
-  text-align: center;
-  color: rgba(234, 246, 255, 0.35);
-  font-size: 0.7rem;
-  padding: 1rem 0;
-}
-
-.result-modal {
-  border: none;
-  border-radius: 16px;
-  padding: 0;
-  background: transparent;
-  color: #eaf6ff;
-}
-
-.result-modal::backdrop {
-  background: rgba(2, 4, 9, 0.93);
-}
-
-.result-modal form {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.8rem;
-  padding: 3vh 3.6vw;
-  min-width: 260px;
-  background: linear-gradient(160deg, rgba(10, 18, 32, 0.98), rgba(4, 8, 16, 0.98));
-  border: 1px solid var(--panel-border);
-  border-radius: 16px;
-  box-shadow: 0 0 40px rgba(75, 232, 255, 0.25);
-}
-
-.result-modal p {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 0.7rem;
-  letter-spacing: 0.4em;
-  color: var(--neon-pink);
-}
-
-.result-modal h2 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.3rem, 3vw, 1.9rem);
-  letter-spacing: 0.06em;
-  background: linear-gradient(120deg, var(--neon-gold), var(--neon-cyan));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.result-grid {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.6rem;
-  margin: 0.4rem 0;
-}
-
-.result-grid div {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0.6rem 0.4rem;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-}
-
-.result-grid span {
-  font-size: 0.55rem;
-  letter-spacing: 0.12em;
-  color: rgba(234, 246, 255, 0.5);
-}
-
-.result-grid strong {
-  font-family: var(--font-mono);
-  font-size: 1.2rem;
-  color: var(--neon-cyan);
-}
-
-@media (max-width: 980px) {
-  .editor-workspace {
-    grid-template-columns: 1fr;
-  }
-  .note-list-panel {
-    max-height: 16vh;
-  }
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(75, 232, 255, 0.35);
-  border-radius: 999px;
-}
-    </style>
+    <link rel="stylesheet" href="styles.css" />
   </head>
-  <body data-mode="play">
+  <body data-active-screen="title">
     <main class="app-shell">
       <div class="rotate-hint" aria-hidden="true">
         <span class="rotate-icon">⤾</span>
         <strong>横画面にしてください</strong>
         <small>Rotate to landscape for the best experience</small>
       </div>
+
       <section class="game-stage" aria-label="Starlight Beats">
-        <canvas id="gameCanvas" width="1600" height="900" aria-label="Rhythm game lane"></canvas>
-        <nav class="mode-nav" aria-label="View mode">
-          <button class="mode-button is-active" id="playModeButton" type="button">PLAY</button>
-          <button class="mode-button" id="editorModeButton" type="button">CHART EDIT</button>
-        </nav>
-        <div class="score-hud" aria-live="polite">
-          <div class="rank-badge"><strong id="rank">D</strong><span>RATING</span></div>
-          <div class="score-board">
-            <div class="score-topline"><span>SCORE</span><span id="chartLabel">MELODINIQ / ULTIMA</span></div>
-            <p class="song-meta">onoken a.k.a. owl＊tree ・ BPM 193</p>
-            <div class="score-rail" aria-hidden="true"><span id="scoreProgress"></span></div>
-            <strong id="score">00000000</strong>
+        <section class="screen screen-title is-active" data-screen-id="title">
+          <div class="title-backdrop" aria-hidden="true"></div>
+          <div class="title-content">
+            <p class="title-eyebrow">ST★RLIGHT BEATS</p>
+            <h1 class="title-logo">STARLIGHT<span>BEATS</span></h1>
+            <p class="title-version">v1.0.0</p>
+            <nav class="title-menu">
+              <button type="button" class="title-menu-button is-primary" id="titlePlayButton">PLAY</button>
+              <button type="button" class="title-menu-button" id="titlePracticeButton">PRACTICE</button>
+              <button type="button" class="title-menu-button" id="titleEditButton">CHART EDIT</button>
+              <button type="button" class="title-menu-button" id="titleSettingsButton">SETTINGS</button>
+            </nav>
+            <div class="title-best">
+              <span>BEST SCORE</span>
+              <strong id="titleBestScore">--------</strong>
+            </div>
           </div>
-        </div>
-        <div class="life-hud" aria-live="polite">
-          <span class="life-label">LIFE</span><div class="life-rail" aria-hidden="true"><span id="lifeBar"></span></div><strong id="lifeValue">1000</strong>
-          <button class="pause-button" id="pauseButton" type="button" aria-label="Pause">II</button>
-        </div>
-        <div class="judgement" id="judgement" aria-live="polite">READY</div>
-        <div class="combo-burst" id="comboBurst" aria-live="polite"><strong id="combo">0</strong><span>COMBO</span></div>
-        <div class="start-panel" id="startPanel">
-          <p class="start-song-title">MELODINIQ</p>
-          <button class="start-button" id="startButton" type="button">START</button>
-          <button class="sound-button" id="muteButton" type="button" aria-pressed="false">SOUND ON</button>
-        </div>
-        <section class="editor-screen" id="editorScreen" aria-label="Chart editor" aria-hidden="true">
+          <button class="sound-toggle-button" id="muteButton" type="button" aria-pressed="false">SOUND ON</button>
+        </section>
+
+        <section class="screen screen-song-select" data-screen-id="songSelect">
+          <header class="screen-header">
+            <button class="icon-back-button" id="songSelectBackButton" type="button" aria-label="Back">←</button>
+            <h1>SONG SELECT</h1>
+          </header>
+          <div class="song-list" id="songList"></div>
+        </section>
+
+        <section class="screen screen-difficulty" data-screen-id="difficulty">
+          <header class="screen-header">
+            <button class="icon-back-button" id="difficultyBackButton" type="button" aria-label="Back">←</button>
+            <h1>DIFFICULTY SELECT</h1>
+          </header>
+          <p class="difficulty-song-name" id="difficultySongName"></p>
+          <div class="difficulty-list" id="difficultyList"></div>
+        </section>
+
+        <section class="screen screen-config" data-screen-id="config">
+          <header class="screen-header">
+            <button class="icon-back-button" id="configBackButton" type="button" aria-label="Back">←</button>
+            <h1>GAME CONFIG</h1>
+          </header>
+          <div class="config-body">
+            <div class="settings-row">
+              <label for="configNoteSpeed">NOTE SPEED</label>
+              <input type="range" id="configNoteSpeed" min="1" max="5" step="0.5" />
+              <output id="configNoteSpeedValue">2.5</output>
+            </div>
+            <div class="settings-row">
+              <label for="configInputOffset">TIMING OFFSET</label>
+              <input type="range" id="configInputOffset" min="-100" max="100" step="1" />
+              <output id="configInputOffsetValue">+0 ms</output>
+            </div>
+            <div class="settings-row">
+              <label>MIRROR</label>
+              <button class="toggle-button" id="configMirror" type="button" data-on="false">OFF</button>
+            </div>
+            <div class="settings-row settings-row--choices">
+              <label>HAPTICS</label>
+              <div class="choice-group" id="configHapticsStrength">
+                <button type="button" data-value="OFF">OFF</button>
+                <button type="button" data-value="LIGHT">LIGHT</button>
+                <button type="button" data-value="STANDARD">STANDARD</button>
+                <button type="button" data-value="STRONG">STRONG</button>
+              </div>
+            </div>
+            <div class="settings-row settings-row--choices">
+              <label>DISPLAY</label>
+              <div class="choice-group" id="configEffects">
+                <button type="button" data-value="HIGH">HIGH</button>
+                <button type="button" data-value="LOW">LOW</button>
+              </div>
+            </div>
+            <button class="tool-button config-more-button" id="configOpenSettingsButton" type="button">詳細設定 ▸</button>
+          </div>
+          <button class="start-button" id="configReadyButton" type="button">READY</button>
+        </section>
+
+        <section class="screen screen-practice-config" data-screen-id="practiceConfig">
+          <header class="screen-header">
+            <button class="icon-back-button" id="practiceConfigBackButton" type="button" aria-label="Back">←</button>
+            <h1>PRACTICE CONFIG</h1>
+          </header>
+          <div class="config-body">
+            <div class="settings-row">
+              <label for="practiceStart">START</label>
+              <input type="text" id="practiceStart" placeholder="00:00.000" />
+            </div>
+            <div class="settings-row">
+              <label for="practiceEnd">END</label>
+              <input type="text" id="practiceEnd" placeholder="00:30.000" />
+            </div>
+            <div class="settings-row">
+              <label for="practiceSpeed">SPEED</label>
+              <input type="range" id="practiceSpeed" min="0.5" max="1.5" step="0.1" value="1" />
+              <output id="practiceSpeedValue">1.0x</output>
+            </div>
+            <div class="settings-row">
+              <label>LOOP</label>
+              <button class="toggle-button" id="practiceLoop" type="button" data-on="true">ON</button>
+            </div>
+            <div class="settings-row">
+              <label>AUTO PLAY</label>
+              <button class="toggle-button" id="practiceAutoPlay" type="button" data-on="false">OFF</button>
+            </div>
+          </div>
+          <button class="start-button" id="practiceStartButton" type="button">START</button>
+        </section>
+
+        <section class="screen screen-settings" data-screen-id="settings">
+          <header class="screen-header">
+            <button class="icon-back-button" id="settingsBackButton" type="button" aria-label="Back">←</button>
+            <h1>SETTINGS</h1>
+          </header>
+          <div class="settings-body">
+            <section class="settings-group">
+              <h2>GAME</h2>
+              <div class="settings-row">
+                <label for="settingNoteSpeed">NOTE SPEED</label>
+                <input type="range" id="settingNoteSpeed" min="1" max="5" step="0.5" />
+                <output id="settingNoteSpeedValue">2.5</output>
+              </div>
+              <div class="settings-row">
+                <label for="settingInputOffset">INPUT OFFSET</label>
+                <input type="range" id="settingInputOffset" min="-100" max="100" step="1" />
+                <output id="settingInputOffsetValue">+0 ms</output>
+              </div>
+              <div class="settings-row">
+                <label for="settingAudioOffset">AUDIO OFFSET</label>
+                <input type="range" id="settingAudioOffset" min="-100" max="100" step="1" />
+                <output id="settingAudioOffsetValue">+0 ms</output>
+              </div>
+              <div class="settings-row">
+                <label>MIRROR</label>
+                <button class="toggle-button" id="settingMirror" type="button" data-on="false">OFF</button>
+              </div>
+              <div class="settings-row">
+                <label>LANE EFFECT</label>
+                <button class="toggle-button" id="settingLaneEffect" type="button" data-on="true">ON</button>
+              </div>
+            </section>
+            <section class="settings-group">
+              <h2>AUDIO</h2>
+              <div class="settings-row">
+                <label for="settingMusicVolume">MUSIC</label>
+                <input type="range" id="settingMusicVolume" min="0" max="100" step="5" />
+                <output id="settingMusicVolumeValue">100%</output>
+              </div>
+              <div class="settings-row">
+                <label for="settingSeVolume">SE</label>
+                <input type="range" id="settingSeVolume" min="0" max="100" step="5" />
+                <output id="settingSeVolumeValue">80%</output>
+              </div>
+              <div class="settings-row">
+                <label>JUDGEMENT VOICE</label>
+                <button class="toggle-button" id="settingJudgementVoice" type="button" data-on="true">ON</button>
+              </div>
+            </section>
+            <section class="settings-group">
+              <h2>HAPTICS</h2>
+              <div class="settings-row settings-row--choices">
+                <label>STRENGTH</label>
+                <div class="choice-group" id="settingHapticsStrength">
+                  <button type="button" data-value="OFF">OFF</button>
+                  <button type="button" data-value="LIGHT">LIGHT</button>
+                  <button type="button" data-value="STANDARD">STANDARD</button>
+                  <button type="button" data-value="STRONG">STRONG</button>
+                </div>
+              </div>
+            </section>
+            <section class="settings-group">
+              <h2>DISPLAY</h2>
+              <div class="settings-row settings-row--choices">
+                <label>EFFECTS</label>
+                <div class="choice-group" id="settingEffects">
+                  <button type="button" data-value="HIGH">HIGH</button>
+                  <button type="button" data-value="LOW">LOW</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <label>PARTICLES</label>
+                <button class="toggle-button" id="settingParticles" type="button" data-on="true">ON</button>
+              </div>
+              <div class="settings-row">
+                <label>MOTION</label>
+                <button class="toggle-button" id="settingMotion" type="button" data-on="true">ON</button>
+              </div>
+              <div class="settings-row">
+                <label>BRIGHTNESS LOCK</label>
+                <button class="toggle-button" id="settingBrightnessLock" type="button" data-on="true">ON</button>
+              </div>
+            </section>
+            <section class="settings-group settings-group--danger">
+              <h2>DATA</h2>
+              <div class="settings-row settings-row--button">
+                <button class="danger-button" id="resetScoresButton" type="button">RESET SCORES</button>
+              </div>
+              <div class="settings-row settings-row--button">
+                <button class="danger-button" id="resetSettingsButton" type="button">RESET SETTINGS</button>
+              </div>
+              <div class="settings-row settings-row--button">
+                <button class="danger-button" id="resetChartsButton" type="button">RESET CHARTS</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="screen screen-editor" data-screen-id="editor">
           <header class="editor-header">
+            <button class="icon-back-button" id="editorBackButton" type="button" aria-label="Back">←</button>
             <div><p>ST★RLIGHT BEATS</p><h1>CHART STUDIO</h1></div>
             <div class="editor-actions">
+              <button class="tool-button" id="undoButton" type="button" disabled>UNDO</button>
+              <button class="tool-button" id="redoButton" type="button" disabled>REDO</button>
               <button class="tool-button" id="exportChartButton" type="button">EXPORT</button>
               <label class="tool-button file-button">IMPORT<input id="importChartInput" type="file" accept="application/json" /></label>
               <button class="tool-button danger-button" id="resetChartButton" type="button">RESET</button>
@@ -955,6 +239,7 @@ body[data-mode="editor"] .start-panel {
           <div class="editor-meta">
             <label>TITLE<input id="chartTitleInput" type="text" maxlength="42" /></label>
             <label>BPM<input id="chartBpmInput" type="number" min="60" max="300" step="1" /></label>
+            <label>LEVEL<input id="chartLevelInput" type="text" maxlength="6" /></label>
             <label>MEASURE<input id="measureInput" type="number" min="1" max="999" step="1" value="1" /></label>
             <output id="chartSaveState">SAVED</output>
           </div>
@@ -976,7 +261,7 @@ body[data-mode="editor"] .start-panel {
                 <label>END LANE<input id="noteEndLaneInput" type="number" min="1" max="8" step="1" value="4" /></label>
               </div>
               <button class="add-note-button" id="addNoteButton" type="button">ADD NOTE</button>
-              <p class="editor-tip">グリッドをタップしてTAPを追加。ノーツ一覧から削除できます。MELODINIQの譜面(153小節)は元々 lane-map.js で自動生成されているので、ここで自由に上書き調整できます。</p>
+              <p class="editor-tip">グリッドをタップしてTAPを追加。ノーツ一覧から削除できます。UNDO / REDOで操作を取り消せます。</p>
             </aside>
           </div>
           <section class="note-list-panel">
@@ -984,18 +269,90 @@ body[data-mode="editor"] .start-panel {
             <div class="note-list" id="noteList"></div>
           </section>
         </section>
-        <dialog class="result-modal" id="resultModal">
-          <form method="dialog">
-            <p>RESULT</p><h2 id="resultTitle">LIVE CLEAR</h2>
-            <div class="result-grid">
-              <div><span>SCORE</span><strong id="resultScore">0</strong></div><div><span>MAX COMBO</span><strong id="resultCombo">0</strong></div><div><span>PERFECT</span><strong id="resultPerfect">0</strong></div><div><span>MISS</span><strong id="resultMiss">0</strong></div>
+
+        <section class="screen screen-game" data-screen-id="game">
+          <canvas id="gameCanvas" width="1600" height="900" aria-label="Rhythm game lane"></canvas>
+          <div class="score-hud" aria-live="polite">
+            <div class="rank-badge"><strong id="rank">D</strong><span>RATING</span></div>
+            <div class="score-board">
+              <div class="score-topline"><span>SCORE</span><span id="chartLabel">MELODINIQ</span></div>
+              <div class="score-rail" aria-hidden="true"><span id="scoreProgress"></span></div>
+              <strong id="score">00000000</strong>
             </div>
-            <button class="start-button" value="close" type="submit">OK</button>
-          </form>
-        </dialog>
+          </div>
+          <div class="life-hud" aria-live="polite">
+            <span class="life-label">LIFE</span>
+            <div class="life-rail" aria-hidden="true"><span id="lifeBar"></span></div>
+            <strong id="lifeValue">1000</strong>
+          </div>
+          <button class="pause-button" id="pauseButton" type="button" aria-label="Pause">II</button>
+          <div class="judgement" id="judgement" aria-live="polite">
+            <strong id="judgementMain"></strong>
+            <span id="judgementSub"></span>
+          </div>
+          <div class="combo-burst" id="comboBurst" aria-live="polite"><strong id="combo">0</strong><span>COMBO</span></div>
+          <div class="ready-overlay" id="readyOverlay">
+            <p class="ready-song-title" id="readySongTitle"></p>
+            <span class="ready-count" id="readyCount">3</span>
+          </div>
+          <div class="pause-overlay" id="pauseOverlay">
+            <div class="pause-panel">
+              <h2>PAUSE</h2>
+              <button type="button" class="start-button" id="pauseResumeButton">RESUME</button>
+              <button type="button" class="tool-button" id="pauseRestartButton">RESTART</button>
+              <button type="button" class="tool-button" id="pauseSettingsButton">SETTINGS</button>
+              <button type="button" class="danger-button" id="pauseQuitButton">QUIT</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen screen-result" data-screen-id="result">
+          <div class="result-panel">
+            <p class="result-eyebrow" id="resultEyebrow">RESULT</p>
+            <p class="result-fullcombo" id="resultFullCombo">FULL COMBO</p>
+            <h2 class="result-score" id="resultScore">00000000</h2>
+            <div class="result-rank" id="resultRank" data-rank="D">D</div>
+            <div class="result-breakdown">
+              <div><span>PERFECT</span><strong id="resultPerfect">0</strong></div>
+              <div><span>GREAT</span><strong id="resultGreat">0</strong></div>
+              <div><span>GOOD</span><strong id="resultGood">0</strong></div>
+              <div><span>MISS</span><strong id="resultMiss">0</strong></div>
+            </div>
+            <div class="result-stats">
+              <div><span>MAX COMBO</span><strong id="resultCombo">0</strong></div>
+              <div><span>ACCURACY</span><strong id="resultAccuracy">0.00%</strong></div>
+            </div>
+            <div class="result-best">
+              <span>BEST SCORE</span>
+              <strong id="resultBestScore">0</strong>
+              <span class="result-new-record" id="resultNewRecord">NEW RECORD</span>
+            </div>
+            <div class="result-actions">
+              <button type="button" class="start-button" id="resultRetryButton">RETRY</button>
+              <button type="button" class="tool-button" id="resultSongSelectButton">SONG SELECT</button>
+              <button type="button" class="tool-button" id="resultTitleButton">TITLE</button>
+            </div>
+          </div>
+        </section>
       </section>
     </main>
+
+    <dialog class="confirm-modal" id="confirmModal">
+      <form method="dialog">
+        <p id="confirmMessage"></p>
+        <div class="confirm-actions">
+          <button value="cancel" type="submit" class="tool-button">CANCEL</button>
+          <button value="ok" type="submit" class="danger-button">OK</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="storage.js"></script>
+    <script src="haptics.js"></script>
+    <script src="settings.js"></script>
+    <script src="audio.js"></script>
     <script src="lane-map.js"></script>
+    <script src="screens.js"></script>
     <script src="game.js"></script>
     <script src="editor.js"></script>
   </body>

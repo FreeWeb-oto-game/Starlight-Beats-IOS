@@ -209,7 +209,11 @@
   }
 
   window.MELODINIQ_CHART = {
-    title: "MELODINIQ ULTIMA",
+    id: "melodiniq-ultima",
+    title: "MELODINIQ",
+    artist: "onoken a.k.a. owl＊tree",
+    difficulty: "ULTIMA",
+    level: "14+",
     bpm: 193,
     audioPath: "assets/melodiniq.mp3",
     divisions: 8,

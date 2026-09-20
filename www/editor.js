@@ -1,21 +1,15 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "starlight-beats-chart-melodiniq-v1";
   const seedChart = structuredClone(
-    window.MELODINIQ_CHART ?? {
-      title: "CUSTOM CHART",
-      bpm: 193,
-      divisions: 8,
-      audioPath: "assets/melodiniq.mp3",
-      notes: [],
-    },
+    window.MELODINIQ_CHART
+      ? { title: "CUSTOM CHART", bpm: window.MELODINIQ_CHART.bpm, level: "??", divisions: 8, audioPath: window.MELODINIQ_CHART.audioPath, notes: [] }
+      : { title: "CUSTOM CHART", bpm: 193, level: "??", divisions: 8, audioPath: "assets/melodiniq.mp3", notes: [] },
   );
-  const playButton = document.querySelector("#playModeButton");
-  const editorButton = document.querySelector("#editorModeButton");
-  const editorScreen = document.querySelector("#editorScreen");
+
   const titleInput = document.querySelector("#chartTitleInput");
   const bpmInput = document.querySelector("#chartBpmInput");
+  const levelInput = document.querySelector("#chartLevelInput");
   const measureInput = document.querySelector("#measureInput");
   const noteStepInput = document.querySelector("#noteStepInput");
   const noteLaneInput = document.querySelector("#noteLaneInput");
@@ -34,21 +28,55 @@
   const exportButton = document.querySelector("#exportChartButton");
   const importInput = document.querySelector("#importChartInput");
   const resetButton = document.querySelector("#resetChartButton");
-
-  function readStoredChart() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      return isChart(saved) ? saved : structuredClone(seedChart);
-    } catch {
-      return structuredClone(seedChart);
-    }
-  }
+  const undoButton = document.querySelector("#undoButton");
+  const redoButton = document.querySelector("#redoButton");
 
   function isChart(value) {
     return Boolean(value && Array.isArray(value.notes) && Number.isFinite(Number(value.bpm)));
   }
 
+  function readStoredChart() {
+    const stored = window.StarlightStorage.read("charts", {}).custom;
+    return isChart(stored) ? stored : structuredClone(seedChart);
+  }
+
   let chart = readStoredChart();
+  let undoStack = [];
+  let redoStack = [];
+
+  function snapshot() {
+    return JSON.stringify(chart);
+  }
+
+  function pushHistory() {
+    undoStack.push(snapshot());
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack = [];
+    refreshHistoryButtons();
+  }
+
+  function refreshHistoryButtons() {
+    if (undoButton) undoButton.disabled = undoStack.length === 0;
+    if (redoButton) redoButton.disabled = redoStack.length === 0;
+  }
+
+  function undo() {
+    if (undoStack.length === 0) return;
+    redoStack.push(snapshot());
+    chart = JSON.parse(undoStack.pop());
+    persistChart();
+    render();
+    refreshHistoryButtons();
+  }
+
+  function redo() {
+    if (redoStack.length === 0) return;
+    undoStack.push(snapshot());
+    chart = JSON.parse(redoStack.pop());
+    persistChart();
+    render();
+    refreshHistoryButtons();
+  }
 
   function currentMeasure() {
     return Math.max(1, Math.round(Number(measureInput.value) || 1));
@@ -77,6 +105,7 @@
   function normalizeChart(source) {
     const title = String(source.title || "CUSTOM CHART").slice(0, 42);
     const bpm = clamp(source.bpm, 60, 300);
+    const level = String(source.level || "??").slice(0, 6);
     const notes = source.notes
       .filter((note) => note && Number.isFinite(Number(note.beat)))
       .map((note, index) => {
@@ -95,19 +124,21 @@
         };
       })
       .sort((a, b) => a.beat - b.beat || a.lane - b.lane);
-    return { title, bpm, divisions: 8, audioPath: "assets/melodiniq.mp3", notes };
+    return { id: "custom", title, bpm, level, divisions: 8, audioPath: seedChart.audioPath, notes };
   }
 
-  function saveChart() {
+  function persistChart() {
     chart = normalizeChart(chart);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(chart));
-    saveState.textContent = "SAVED";
-    window.dispatchEvent(new CustomEvent("starlight-chart-change", { detail: structuredClone(chart) }));
+    const store = window.StarlightStorage.read("charts", {});
+    store.custom = chart;
+    window.StarlightStorage.write("charts", store);
+    if (saveState) saveState.textContent = "SAVED";
   }
 
   function setEditorValues() {
     titleInput.value = chart.title;
     bpmInput.value = chart.bpm;
+    if (levelInput) levelInput.value = chart.level || "??";
   }
 
   function selectedNotes() {
@@ -172,9 +203,11 @@
     setEditorValues();
     renderGrid();
     renderList();
+    refreshHistoryButtons();
   }
 
   function addNote(values = {}) {
+    pushHistory();
     const measure = clamp(values.measure ?? currentMeasure(), 1, 999);
     const step = clamp(values.step ?? noteStepInput.value, 0, 15);
     const lane = clamp(values.lane ?? Number(noteLaneInput.value) - 1, 0, 7);
@@ -185,34 +218,34 @@
     const endLane = clamp(values.endLane ?? Number(noteEndLaneInput.value) - 1, 0, 7);
     const beat = 4 + (measure - 1) * 4 + step / 4;
     const endBeat = type === "hold" ? Math.max(beat + 0.25, 4 + (endMeasureValue - 1) * 4 + endStepValue / 4) : null;
-    chart.notes.push({ id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`, type, lane, width, beat, endBeat, endLane: type === "hold" ? endLane : lane });
-    saveChart();
+    chart.notes.push({
+      id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      type,
+      lane,
+      width,
+      beat,
+      endBeat,
+      endLane: type === "hold" ? endLane : lane,
+    });
+    persistChart();
     render();
-  }
-
-  function setMode(mode) {
-    document.body.dataset.mode = mode;
-    const editing = mode === "editor";
-    playButton.classList.toggle("is-active", !editing);
-    editorButton.classList.toggle("is-active", editing);
-    editorScreen.setAttribute("aria-hidden", String(!editing));
-    window.dispatchEvent(new CustomEvent("starlight-editor-mode", { detail: { editing } }));
-    if (editing) render();
   }
 
   function syncMeta() {
+    pushHistory();
     chart.title = titleInput.value.trim() || "CUSTOM CHART";
     chart.bpm = clamp(bpmInput.value, 60, 300);
-    saveChart();
+    chart.level = (levelInput?.value || "??").trim().slice(0, 6) || "??";
+    persistChart();
     render();
   }
 
-  playButton.addEventListener("click", () => setMode("play"));
-  editorButton.addEventListener("click", () => setMode("editor"));
-  measureInput.addEventListener("input", render);
   titleInput.addEventListener("change", syncMeta);
   bpmInput.addEventListener("change", syncMeta);
+  levelInput?.addEventListener("change", syncMeta);
+  measureInput.addEventListener("input", render);
   addNoteButton.addEventListener("click", () => addNote());
+
   chartGrid.addEventListener("click", (event) => {
     const cell = event.target.closest(".chart-cell");
     if (!cell) return;
@@ -221,13 +254,16 @@
     noteTypeInput.value = "tap";
     addNote({ step: cell.dataset.step, lane: cell.dataset.lane, type: "tap", width: 1 });
   });
+
   noteList.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-note-id]");
     if (!button) return;
+    pushHistory();
     chart.notes = chart.notes.filter((note) => note.id !== button.dataset.noteId);
-    saveChart();
+    persistChart();
     render();
   });
+
   exportButton.addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(normalizeChart(chart), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -237,6 +273,7 @@
     link.click();
     URL.revokeObjectURL(url);
   });
+
   importInput.addEventListener("change", () => {
     const file = importInput.files?.[0];
     if (!file) return;
@@ -245,21 +282,36 @@
       try {
         const imported = normalizeChart(JSON.parse(String(reader.result)));
         if (!isChart(imported)) throw new Error("Invalid chart");
+        pushHistory();
         chart = imported;
         measureInput.value = "1";
-        saveChart();
+        persistChart();
         render();
       } catch {
-        saveState.textContent = "INVALID FILE";
+        if (saveState) saveState.textContent = "INVALID FILE";
       }
     });
     reader.readAsText(file);
     importInput.value = "";
   });
-  resetButton.addEventListener("click", () => {
+
+  resetButton.addEventListener("click", async () => {
+    const confirmed = await window.StarlightScreens?.confirm("譜面を初期状態に戻しますか？");
+    if (!confirmed) return;
+    pushHistory();
     chart = structuredClone(seedChart);
     measureInput.value = "1";
-    saveChart();
+    persistChart();
+    render();
+  });
+
+  undoButton?.addEventListener("click", undo);
+  redoButton?.addEventListener("click", redo);
+
+  window.addEventListener("starlight-editor-open", () => {
+    chart = readStoredChart();
+    undoStack = [];
+    redoStack = [];
     render();
   });
 

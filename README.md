@@ -9,9 +9,14 @@ starlight-beats-capacitor/
 ├─ www/
 │  ├─ index.html
 │  ├─ styles.css
+│  ├─ storage.js
+│  ├─ settings.js
+│  ├─ haptics.js
+│  ├─ audio.js
+│  ├─ lane-map.js
+│  ├─ screens.js
 │  ├─ game.js
 │  ├─ editor.js
-│  ├─ lane-map.js
 │  └─ assets/
 ├─ .github/
 │  └─ workflows/
@@ -21,7 +26,20 @@ starlight-beats-capacitor/
 └─ README.md
 ```
 
-`www/` 内の5ファイルは元ファイルを変更せずにそのまま配置しています。
+`www/` は TITLE → SONG SELECT → DIFFICULTY SELECT → GAME CONFIG → READY → GAME → RESULT のフル画面フローと、PRACTICE（区間ループ / 速度 / オートプレイ）、CHART EDIT（譜面エディター、UNDO/REDO対応）、SETTINGS（ノーツ速度・入力/音声オフセット・ミラー・ハプティクス・表示・データ管理）を備えています。
+
+### 各ファイルの役割
+
+- `storage.js` : 設定・スコア・譜面を localStorage に保存する薄いラッパー
+- `settings.js` : 設定値の読み書きと、設定UIコントロールの汎用バインディング
+- `haptics.js` : Capacitor Haptics（実機）と `navigator.vibrate`（Web）を吸収するハプティクス層
+- `audio.js` : Web Audio の `AudioBufferSourceNode` で楽曲を再生する音声エンジン（入力オフセット/音声オフセット/速度変更に対応、デコード失敗時は内蔵シンセにフォールバック）
+- `lane-map.js` : 内蔵譜面「MELODINIQ」のノーツデータ
+- `screens.js` : 画面遷移・楽曲選択・リザルト表示などのUIコントローラー
+- `game.js` : 判定・スコア・ライフ・演出を司るリズムエンジン本体
+- `editor.js` : 譜面エディター（グリッド編集・エクスポート/インポート・UNDO/REDO）
+
+新規に作成した譜面は SONG SELECT に「CUSTOM CHART」として表示されます。
 
 ## assets
 
