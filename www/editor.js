@@ -111,8 +111,9 @@
       .map((note, index) => {
         const lane = clamp(note.lane, 0, 7);
         const width = clamp(note.width, 1, 8 - lane);
-        const type = ["tap", "gold", "flick", "hold"].includes(note.type) ? note.type : "tap";
-        const endBeat = type === "hold" ? Math.max(Number(note.endBeat) || Number(note.beat) + 1, Number(note.beat) + 0.25) : null;
+        const type = ["tap", "gold", "flick", "hold", "air", "slide"].includes(note.type) ? note.type : "tap";
+        const hasEnd = type === "hold" || type === "slide";
+        const endBeat = hasEnd ? Math.max(Number(note.endBeat) || Number(note.beat) + 1, Number(note.beat) + 0.25) : null;
         return {
           id: String(note.id || `custom-${index}-${Date.now()}`),
           type,
@@ -120,7 +121,7 @@
           width,
           beat: Math.max(4, Math.round(Number(note.beat) * 4) / 4),
           endBeat,
-          endLane: type === "hold" ? clamp(note.endLane ?? lane, 0, 7) : lane,
+          endLane: hasEnd ? clamp(note.endLane ?? lane, 0, 7) : lane,
         };
       })
       .sort((a, b) => a.beat - b.beat || a.lane - b.lane);
@@ -188,7 +189,7 @@
       const row = document.createElement("div");
       row.className = "note-row";
       const label = document.createElement("span");
-      const end = note.type === "hold" ? ` → M${endMeasure(note)}:${String(endStep(note)).padStart(2, "0")}` : "";
+      const end = note.type === "hold" || note.type === "slide" ? ` → M${endMeasure(note)}:${String(endStep(note)).padStart(2, "0")}` : "";
       label.textContent = `${String(noteStep(note)).padStart(2, "0")}  L${note.lane + 1}  ${note.type.toUpperCase()}${end}`;
       const remove = document.createElement("button");
       remove.type = "button";
@@ -217,7 +218,8 @@
     const endStepValue = clamp(values.endStep ?? noteEndStepInput.value, 0, 15);
     const endLane = clamp(values.endLane ?? Number(noteEndLaneInput.value) - 1, 0, 7);
     const beat = 4 + (measure - 1) * 4 + step / 4;
-    const endBeat = type === "hold" ? Math.max(beat + 0.25, 4 + (endMeasureValue - 1) * 4 + endStepValue / 4) : null;
+    const hasEnd = type === "hold" || type === "slide";
+    const endBeat = hasEnd ? Math.max(beat + 0.25, 4 + (endMeasureValue - 1) * 4 + endStepValue / 4) : null;
     chart.notes.push({
       id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       type,
@@ -225,7 +227,7 @@
       width,
       beat,
       endBeat,
-      endLane: type === "hold" ? endLane : lane,
+      endLane: hasEnd ? endLane : lane,
     });
     persistChart();
     render();

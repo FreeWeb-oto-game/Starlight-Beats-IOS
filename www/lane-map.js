@@ -41,11 +41,23 @@
     push("flick", clamp(lane, 0, 8 - w), w, measure, position);
   }
 
+  function air(lane, measure, position, width = 2) {
+    const w = clamp(width, 1, 8);
+    push("air", clamp(lane, 0, 8 - w), w, measure, position);
+  }
+
   function hold(lane, width, measure, position, endMeasure, endPosition, endLane) {
     const w = clamp(width, 1, 8);
     const l = clamp(lane, 0, 8 - w);
     const el = clamp(endLane ?? lane, 0, 8 - w);
     push("hold", l, w, measure, position, endMeasure, endPosition, el);
+  }
+
+  function slide(lane, width, measure, position, endMeasure, endPosition, endLane) {
+    const w = clamp(width, 1, 8);
+    const l = clamp(lane, 0, 8 - w);
+    const el = clamp(endLane ?? lane, 0, 8 - w);
+    push("slide", l, w, measure, position, endMeasure, endPosition, el);
   }
 
   function stairsUp(measure) {
@@ -82,6 +94,7 @@
     gold(2, measure, 1.5);
     gold(5, measure, 2.5);
     flick(3, measure, 3.25);
+    air(0, measure, 1.75, 2);
   }
 
   function railZigzag(measure) {
@@ -125,8 +138,8 @@
   }
 
   function xCross(measure) {
-    hold(0, 1, measure, 0, measure, 3.5, 7);
-    hold(7, 1, measure, 0, measure, 3.5, 0);
+    slide(0, 1, measure, 0, measure, 3.5, 7);
+    slide(7, 1, measure, 0, measure, 3.5, 0);
     tap(3, measure, 1.5);
     tap(4, measure, 1.5);
   }
@@ -141,7 +154,7 @@
     const dir = measure % 2 === 0 ? 1 : -1;
     const start = dir === 1 ? 0 : 5;
     for (let i = 0; i < 4; i += 1) gold(start + dir * i, measure, i * 0.7);
-    hold(start, 3, measure, 0, measure, 3.5, start + dir * 3);
+    slide(start, 3, measure, 0, measure, 3.5, start + dir * 3);
   }
 
   function chevronBurst(measure) {
@@ -153,12 +166,14 @@
     gold(5, measure, 2);
     flick(3, measure, 3.5);
     flick(4, measure, 3.5);
+    air(6, measure, 1.5, 2);
   }
 
   function sparseTaps(measure) {
     const lane = measure % 6;
     tap(lane, measure, 0);
     tap(7 - lane, measure, 2);
+    air((lane + 3) % 8, measure, 1, 2);
   }
 
   function fiveKeyHold(measure) {

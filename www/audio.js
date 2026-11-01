@@ -23,6 +23,7 @@
   let offsetSecondsRef = 0;
   let muted = false;
   let volumes = { musicVolume: 100, seVolume: 80 };
+  let metronomeNodes = [];
 
   function ensureContext() {
     if (audioContext) return audioContext;
@@ -46,6 +47,52 @@
   function unlock() {
     const ctx = ensureContext();
     if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+  }
+
+  function getContext() {
+    return ensureContext();
+  }
+
+  function contextTimeToPerfMs(contextTime) {
+    const ctx = ensureContext();
+    if (!ctx) return performance.now();
+    return performance.now() + (contextTime - ctx.currentTime) * 1000;
+  }
+
+  function playMetronomeClick(atTime, accent = false) {
+    const ctx = ensureContext();
+    if (!ctx || muted || !seGain) return;
+    const time = Math.max(atTime ?? ctx.currentTime, ctx.currentTime + 0.005);
+    const voices = accent
+      ? [{ frequency: 1318.51, duration: 0.1, type: "square", gain: 0.16 }, { frequency: 440, duration: 0.16, type: "sine", gain: 0.11 }]
+      : [{ frequency: 880, duration: 0.06, type: "square", gain: 0.1 }];
+    for (const voice of voices) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = voice.type;
+      osc.frequency.setValueAtTime(voice.frequency, time);
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(voice.gain, time + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + voice.duration);
+      osc.connect(gain);
+      gain.connect(seGain);
+      osc.start(time);
+      osc.stop(time + voice.duration + 0.03);
+      metronomeNodes.push(osc);
+      osc.onended = () => {
+        metronomeNodes = metronomeNodes.filter((node) => node !== osc);
+      };
+    }
+  }
+
+  function stopMetronome() {
+    const nodes = metronomeNodes;
+    metronomeNodes = [];
+    for (const node of nodes) {
+      try {
+        node.stop();
+      } catch {}
+    }
   }
 
   function configure({ audioPath, bpm }) {
@@ -77,6 +124,7 @@
       })
       .catch(() => {
         songBuffer = null;
+        bufferLoadPromise = null;
         return null;
       });
     return bufferLoadPromise;
@@ -171,6 +219,7 @@
   function stop() {
     isPlaying = false;
     stopCurrentSource();
+    stopMetronome();
   }
 
   function isUsingRealAudio() {
@@ -241,6 +290,10 @@
   window.StarlightAudio = {
     configure,
     unlock,
+    getContext,
+    contextTimeToPerfMs,
+    playMetronomeClick,
+    stopMetronome,
     start,
     pause,
     resume,

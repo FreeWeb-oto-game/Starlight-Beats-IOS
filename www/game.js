@@ -5,8 +5,8 @@
   const ctx = canvas.getContext("2d");
   const scoreEl = document.querySelector("#score");
   const scoreProgressEl = document.querySelector("#scoreProgress");
-  const comboEl = document.querySelector("#combo");
-  const comboBurstEl = document.querySelector("#comboBurst");
+  const comboCounterEl = document.querySelector("#comboCounter");
+  const comboHudEl = document.querySelector("#comboHud");
   const rankEl = document.querySelector("#rank");
   const lifeBarEl = document.querySelector("#lifeBar");
   const lifeValueEl = document.querySelector("#lifeValue");
@@ -21,15 +21,17 @@
   const pauseOverlayEl = document.querySelector("#pauseOverlay");
 
   const HIT_WINDOWS = [
-    { name: "PERFECT", ms: 100, score: 1000, color: "#7cf6ff" },
-    { name: "GREAT", ms: 185, score: 760, color: "#71ff99" },
-    { name: "GOOD", ms: 310, score: 460, color: "#f7df72" },
+    { key: "CRITICAL", label: "JUSTICE CRITICAL", ms: 70, weight: 1, color: "#ffd84a" },
+    { key: "JUSTICE", label: "JUSTICE", ms: 130, weight: 0.7, color: "#6eefff" },
+    { key: "ATTACK", label: "ATTACK", ms: 200, weight: 0.4, color: "#7cff9b" },
   ];
-  const MISS_WINDOW = 0.38;
+  const MISS_COLOR = "#b48cff";
+  const MISS_WINDOW = 0.3;
   const MAX_LIFE = 1000;
+  const MAX_SCORE = 1010000;
   const BASE_LEAD_TIME = 2.35;
   const BASE_SPEED = 2.5;
-  const laneColors = ["#ff6a79", "#ff7a68", "#ff6e85", "#ff8765", "#ff6579", "#ff786e", "#ff718e", "#ff826b"];
+  const laneColors = ["#ff5c7a", "#ff8a5c", "#ffc35c", "#ffe066", "#a6ff7a", "#5cffcf", "#5cc8ff", "#b48cff"];
   const tapKeys = ["a", "s", "d", "f", "j", "k", "l", ";"];
 
   let currentSong = null;
@@ -42,8 +44,12 @@
   let activePointers = new Map();
   let state = "idle";
   let practiceOptions = null;
-  let judgementCounts = { PERFECT: 0, GREAT: 0, GOOD: 0, MISS: 0 };
-  let score = 0;
+  let judgementCounts = { CRITICAL: 0, JUSTICE: 0, ATTACK: 0, MISS: 0 };
+  let weightedScore = 0;
+  let timingEarly = 0;
+  let timingLate = 0;
+  let timingSumMs = 0;
+  let timingSamples = 0;
   let combo = 0;
   let maxCombo = 0;
   let life = MAX_LIFE;
@@ -61,12 +67,42 @@
   let animationFrame = 0;
   let loopRunning = false;
   let judgementTimer = 0;
-  let comboTimer = 0;
+  let comboPopTimer = 0;
   let missFlashUntil = 0;
   let shakeUntil = 0;
+  let countdownToken = 0;
+  let resumeCountdownActive = false;
+  let needsResize = true;
+  let cachedSettings = {
+    noteSpeed: 2.5,
+    inputOffsetMs: 0,
+    effects: "HIGH",
+    particles: true,
+    motion: true,
+    laneEffect: true,
+    judgementVoice: true,
+    failEnabled: false,
+    showJudgement: true,
+    showCombo: true,
+    timingFeedback: true,
+    laneCover: 0,
+    laneBrightness: 100,
+    mirror: false,
+  };
 
   function getLeadTime(speed) {
     return BASE_LEAD_TIME * (BASE_SPEED / Math.max(0.5, speed));
+  }
+
+  function applySettings(snapshot) {
+    cachedSettings = { ...cachedSettings, ...snapshot };
+    currentLeadTime = getLeadTime(cachedSettings.noteSpeed);
+    inputOffsetSeconds = cachedSettings.inputOffsetMs / 1000;
+    effectsHigh = cachedSettings.effects !== "LOW";
+    particlesEnabled = cachedSettings.particles;
+    motionEnabled = cachedSettings.motion;
+    laneEffectEnabled = cachedSettings.laneEffect;
+    judgementVoiceEnabled = cachedSettings.judgementVoice;
   }
 
   function mirrorLane(lane, width) {
@@ -93,6 +129,8 @@
         finished: false,
         pointerId: null,
         pendingFlick: false,
+        pendingAir: false,
+        deviateSince: 0,
         lastHoldAward: 0,
       };
     });
@@ -108,11 +146,15 @@
   }
 
   function resetStats() {
-    score = 0;
+    weightedScore = 0;
+    timingEarly = 0;
+    timingLate = 0;
+    timingSumMs = 0;
+    timingSamples = 0;
     combo = 0;
     maxCombo = 0;
     life = MAX_LIFE;
-    judgementCounts = { PERFECT: 0, GREAT: 0, GOOD: 0, MISS: 0 };
+    judgementCounts = { CRITICAL: 0, JUSTICE: 0, ATTACK: 0, MISS: 0 };
   }
 
   function setClock({ atSongTime = 0, playbackRate = 1, delaySeconds = 0 } = {}) {
@@ -136,57 +178,78 @@
     return null;
   }
 
-  function getMaxScore() {
-    return Math.max(
-      chart.reduce((sum, note) => {
-        const multiplier = note.type === "gold" ? 1.35 : note.type === "hold" ? 1.7 : note.type === "flick" ? 1.15 : 1;
-        return sum + (HIT_WINDOWS[0].score + 120) * multiplier;
-      }, 0),
-      1,
-    );
+  function totalNotes() {
+    return Math.max(1, chart.length);
+  }
+
+  function judgedCount() {
+    return judgementCounts.CRITICAL + judgementCounts.JUSTICE + judgementCounts.ATTACK + judgementCounts.MISS;
+  }
+
+  function computeScore() {
+    const total = totalNotes();
+    const base = (weightedScore / total) * 1000000;
+    const comboBonus = judgementCounts.MISS === 0 ? 10000 * Math.min(1, judgedCount() / total) : 0;
+    return Math.round(base + comboBonus);
   }
 
   function computeAccuracy() {
-    const totalNotes = judgementCounts.PERFECT + judgementCounts.GREAT + judgementCounts.GOOD + judgementCounts.MISS;
-    if (totalNotes === 0) return 100;
-    const weighted = judgementCounts.PERFECT * 1 + judgementCounts.GREAT * 0.7 + judgementCounts.GOOD * 0.4;
-    return (weighted / totalNotes) * 100;
+    const judged = judgedCount();
+    if (judged === 0) return 100;
+    const weighted = judgementCounts.CRITICAL * 1 + judgementCounts.JUSTICE * 0.7 + judgementCounts.ATTACK * 0.4;
+    return (weighted / judged) * 100;
   }
 
-  function computeRank(accuracy) {
-    if (accuracy >= 99.5 && judgementCounts.MISS === 0) return "SSS";
-    if (accuracy >= 97) return "SS";
-    if (accuracy >= 94) return "S";
-    if (accuracy >= 88) return "A";
-    if (accuracy >= 78) return "B";
-    if (accuracy >= 60) return "C";
+  function computeRank(value) {
+    if (value >= 1007500) return "SSS+";
+    if (value >= 1000000) return "SSS";
+    if (value >= 995000) return "SS+";
+    if (value >= 990000) return "SS";
+    if (value >= 985000) return "S+";
+    if (value >= 975000) return "S";
+    if (value >= 950000) return "AAA";
+    if (value >= 900000) return "AA";
+    if (value >= 850000) return "A";
+    if (value >= 750000) return "BBB";
+    if (value >= 650000) return "BB";
+    if (value >= 500000) return "B";
+    if (value >= 350000) return "C";
     return "D";
   }
 
+  function formatScore(value) {
+    return window.StarlightFormat ? window.StarlightFormat.score(value) : String(Math.round(value));
+  }
+
   function updateHud() {
-    scoreEl.textContent = String(score).padStart(8, "0");
-    comboEl.textContent = String(combo);
-    rankEl.textContent = computeRank(computeAccuracy());
+    const currentScore = computeScore();
+    scoreEl.textContent = formatScore(currentScore);
+    if (comboCounterEl) comboCounterEl.textContent = String(combo);
+    rankEl.textContent = judgedCount() >= 5 ? computeRank(computeAccuracy() * 10000) : "-";
     lifeValueEl.textContent = practiceOptions ? "---" : String(life);
     lifeBarEl.style.width = practiceOptions ? "100%" : `${Math.max(0, Math.min(100, (life / MAX_LIFE) * 100))}%`;
-    scoreProgressEl.style.width = `${Math.max(0, Math.min(100, (score / getMaxScore()) * 100))}%`;
+    scoreProgressEl.style.width = `${Math.max(0, Math.min(100, (currentScore / MAX_SCORE) * 100))}%`;
+  }
+
+  function popCombo() {
+    if (!comboHudEl) return;
+    comboHudEl.classList.add("is-pop");
+    window.clearTimeout(comboPopTimer);
+    comboPopTimer = window.setTimeout(() => comboHudEl.classList.remove("is-pop"), 90);
   }
 
   function showJudgement(text, color, timingLabel) {
+    if (!cachedSettings.showJudgement) return;
     judgementMainEl.textContent = text;
     judgementMainEl.style.color = color;
-    judgementSubEl.textContent = timingLabel || "";
+    judgementMainEl.style.textShadow = `0 0 ${effectsHigh ? 22 : 10}px ${color}`;
+    judgementSubEl.textContent = cachedSettings.timingFeedback ? timingLabel || "" : "";
     judgementEl.classList.add("is-active");
-    judgementTimer = performance.now() + 380;
-  }
-
-  function showCombo() {
-    comboBurstEl.classList.add("is-active");
-    comboTimer = performance.now() + 520;
+    judgementTimer = performance.now() + 420;
   }
 
   function loseLife(amount) {
-    if (practiceOptions) {
+    if (practiceOptions || !cachedSettings.failEnabled) {
       updateHud();
       return;
     }
@@ -195,13 +258,12 @@
     if (life <= 0 && state === "playing") endGame(true);
   }
 
-  function addComboScore(note, quality, amount = 1) {
+  function addCombo(quality, award = true) {
     combo += 1;
     maxCombo = Math.max(maxCombo, combo);
-    const typeMultiplier = note.type === "gold" ? 1.35 : note.type === "hold" ? 0.85 : note.type === "flick" ? 1.15 : 1;
-    score += Math.round((quality.score + Math.min(combo, 120) * 6) * typeMultiplier * amount);
+    if (award && quality) weightedScore += quality.weight;
+    popCombo();
     updateHud();
-    showCombo();
     if (combo > 0 && combo % 50 === 0) window.StarlightHaptics.trigger("combo");
   }
 
@@ -251,30 +313,47 @@
   }
 
   function noteColor(note) {
-    if (note.type === "gold") return "#f7df72";
-    if (note.type === "hold") return "#71ff99";
-    if (note.type === "flick") return "#ad8cff";
-    return laneColors[note.lane % laneColors.length];
+    if (note.type === "gold") return "#ffd84a";
+    if (note.type === "hold") return "#63ffc9";
+    if (note.type === "flick") return "#ff6ad5";
+    if (note.type === "air") return "#eef3ff";
+    if (note.type === "slide") return "#ffa84a";
+    return "#7ce8ff";
   }
 
-  function hitNote(note, quality, point, timingLabel) {
+  function isTrail(note) {
+    return note.type === "hold" || note.type === "slide";
+  }
+
+  function recordTiming(delta) {
+    if (!Number.isFinite(delta)) return;
+    const ms = delta * 1000;
+    timingSumMs += ms;
+    timingSamples += 1;
+    if (ms > 8) timingLate += 1;
+    else if (ms < -8) timingEarly += 1;
+  }
+
+  function hitNote(note, quality, point, timingLabel, delta = null) {
+    recordTiming(delta);
     note.hit = true;
     note.finished = true;
     if (laneEffectEnabled) laneBursts[note.lane] = 1;
-    judgementCounts[quality.name] += 1;
-    addComboScore(note, quality);
-    showJudgement(quality.name, quality.color, timingLabel);
+    judgementCounts[quality.key] += 1;
+    addCombo(quality);
+    showJudgement(quality.label, quality.color, timingLabel);
     if (particlesEnabled) spawnParticles(point.x, point.y, noteColor(note), note.type === "gold" ? 26 : 18);
     if (judgementVoiceEnabled) window.StarlightAudio.playHitTone(note.type === "gold" ? "gold" : note.type === "flick" ? "flick" : "tap");
-    window.StarlightHaptics.trigger(quality.name === "PERFECT" ? "perfect" : "tap");
+    window.StarlightHaptics.trigger(quality.key === "CRITICAL" ? "perfect" : "tap");
   }
 
   function startHold(note, quality, pointerId, point) {
     note.started = true;
     note.pointerId = pointerId;
+    note.deviateSince = 0;
     note.lastHoldAward = rawSongTime();
     if (laneEffectEnabled) laneBursts[note.lane] = 1;
-    addComboScore(note, quality, 0.7);
+    addCombo(quality, false);
     showJudgement("HOLD", "#71ff99", null);
     if (particlesEnabled) spawnParticles(point.x, point.y, "#71ff99", 16);
     if (judgementVoiceEnabled) window.StarlightAudio.playHitTone("holdStart");
@@ -288,12 +367,12 @@
     note.finished = true;
     note.pointerId = null;
     if (laneEffectEnabled) laneBursts[note.endLane] = 1;
-    judgementCounts[quality.name] += 1;
-    addComboScore(note, quality);
-    showJudgement(quality.name, quality.color, null);
+    judgementCounts[quality.key] += 1;
+    addCombo(quality);
+    showJudgement(quality.label, quality.color, null);
     if (particlesEnabled) spawnParticles(point.x, point.y, "#71ff99", 24);
     if (judgementVoiceEnabled) window.StarlightAudio.playHitTone("holdEnd");
-    window.StarlightHaptics.trigger(quality.name === "PERFECT" ? "perfect" : "tap");
+    window.StarlightHaptics.trigger(quality.key === "CRITICAL" ? "perfect" : "tap");
   }
 
   function failNote(note) {
@@ -303,7 +382,7 @@
     combo = 0;
     judgementCounts.MISS += 1;
     loseLife(note.type === "hold" ? 85 : 60);
-    showJudgement("MISS", "#ff7369", null);
+    showJudgement("MISS", MISS_COLOR, null);
     if (judgementVoiceEnabled) window.StarlightAudio.playMissTone();
     window.StarlightHaptics.trigger("miss");
     if (motionEnabled) {
@@ -319,8 +398,8 @@
     let candidate = null;
     let candidateAbsDelta = Infinity;
     for (const note of chart) {
-      if (note.missed || note.finished || note.pendingFlick) continue;
-      if (note.type === "hold" && note.started) continue;
+      if (note.missed || note.finished || note.pendingFlick || note.pendingAir) continue;
+      if (isTrail(note) && note.started) continue;
       const delta = jt - note.time;
       const absDelta = Math.abs(delta);
       const quality = HIT_WINDOWS.find((hitWindow) => absDelta * 1000 <= hitWindow.ms);
@@ -338,8 +417,17 @@
     if (!candidate) return false;
     const { note, quality, delta } = candidate;
 
-    if (note.type === "hold") {
+    if (isTrail(note)) {
       startHold(note, quality, pointer.id, point);
+      return true;
+    }
+
+    if (note.type === "air") {
+      note.pendingAir = true;
+      note.pointerId = pointer.id;
+      pointer.pendingAir = note.id;
+      showJudgement("AIR", "#eef3ff", null);
+      if (laneEffectEnabled) laneBursts[note.lane] = 1;
       return true;
     }
 
@@ -352,7 +440,7 @@
       return true;
     }
 
-    hitNote(note, quality, point, timingLabelFor(delta));
+    hitNote(note, quality, point, timingLabelFor(delta), delta);
     return true;
   }
 
@@ -369,16 +457,45 @@
     const quality = HIT_WINDOWS.find((hitWindow) => Math.abs(delta) * 1000 <= hitWindow.ms + 70) ?? HIT_WINDOWS[2];
 
     if (distance < threshold && jt < note.time + MISS_WINDOW) return false;
-    hitNote(note, quality, pointer.point, timingLabelFor(delta));
+    hitNote(note, quality, pointer.point, timingLabelFor(delta), delta);
     note.pendingFlick = false;
     note.pointerId = null;
     pointer.pendingFlick = null;
     return true;
   }
 
+  function tryFinishAir(pointer) {
+    if (!pointer.pendingAir) return false;
+    const note = chart.find((item) => item.id === pointer.pendingAir);
+    if (!note || note.finished || note.missed) {
+      pointer.pendingAir = null;
+      return false;
+    }
+    const lift = pointer.startPoint.y - pointer.point.y;
+    if (lift < getLayout().height * 0.045) return false;
+    const jt = judgeTime();
+    const delta = jt - note.time;
+    const quality = HIT_WINDOWS.find((hitWindow) => Math.abs(delta) * 1000 <= hitWindow.ms + 70) ?? HIT_WINDOWS[2];
+    note.pendingAir = false;
+    note.pointerId = null;
+    pointer.pendingAir = null;
+    hitNote(note, quality, pointer.point, timingLabelFor(delta), delta);
+    return true;
+  }
+
+  function cancelPendingAir(pointer) {
+    if (!pointer.pendingAir) return;
+    const note = chart.find((item) => item.id === pointer.pendingAir);
+    pointer.pendingAir = null;
+    if (!note || note.finished || note.missed) return;
+    note.pendingAir = false;
+    note.pointerId = null;
+    failNote(note);
+  }
+
   function updateActiveHolds(songTime) {
     for (const note of chart) {
-      if (note.type !== "hold" || !note.started || note.finished || note.missed) continue;
+      if (!isTrail(note) || !note.started || note.finished || note.missed) continue;
       if (note.pointerId === -1) continue;
       const pointer = activePointers.get(note.pointerId);
       if (!pointer) {
@@ -389,23 +506,33 @@
       const layout = getLayout();
       const targetLane = holdLaneAt(note, songTime);
       const expected = pointAtLane(targetLane, layout.hitY, layout);
-      const tolerance = layout.hitWidth * 0.16;
-      if (laneEffectEnabled && songTime > note.time + 0.16 && Math.abs(pointer.point.x - expected.x) > tolerance) {
+      const tolerance = layout.hitWidth * (note.type === "slide" ? 0.3 : 0.16);
+      const offLane = Math.abs(pointer.point.x - expected.x) > tolerance;
+      if (laneEffectEnabled && songTime > note.time + 0.16 && offLane) {
         laneBursts[Math.round(targetLane)] = 0.5;
+      }
+
+      if (note.type === "slide") {
+        if (offLane) {
+          if (!note.deviateSince) note.deviateSince = songTime;
+          if (songTime - note.deviateSince > 0.22) {
+            failNote(note);
+            continue;
+          }
+        } else {
+          note.deviateSince = 0;
+        }
       }
 
       if (songTime - note.lastHoldAward > beatSeconds * 1.5 && songTime < note.endTime - 0.1) {
         note.lastHoldAward = songTime;
-        combo += 1;
-        maxCombo = Math.max(maxCombo, combo);
-        score += 180;
-        showCombo();
-        updateHud();
+        addCombo(null, false);
       }
 
       if (songTime >= note.endTime - 0.03) {
         const endPoint = pointAtLane(note.endLane, layout.hitY, layout);
-        finishHold(note, endPoint, HIT_WINDOWS[0]);
+        const strayed = Math.abs(pointer.point.x - endPoint.x) > layout.hitWidth * 0.18;
+        finishHold(note, endPoint, strayed ? HIT_WINDOWS[1] : HIT_WINDOWS[0]);
       }
     }
   }
@@ -418,7 +545,7 @@
     const layout = getLayout();
     for (const note of chart) {
       if (note.missed || note.finished) continue;
-      if (note.type === "hold") {
+      if (isTrail(note)) {
         if (!note.started && songTime >= note.time) {
           startHold(note, HIT_WINDOWS[0], -1, pointAtLane(note.lane, layout.hitY, layout));
         } else if (note.started && songTime >= note.endTime) {
@@ -435,7 +562,7 @@
   function missOldNotes(songTime) {
     for (const note of chart) {
       if (note.finished || note.missed) continue;
-      if (note.type === "hold") {
+      if (isTrail(note)) {
         if (!note.started && songTime - note.time > MISS_WINDOW) failNote(note);
         if (note.started && note.pointerId !== -1 && songTime - note.endTime > MISS_WINDOW) failNote(note);
         continue;
@@ -467,6 +594,8 @@
       note.finished = false;
       note.pointerId = null;
       note.pendingFlick = false;
+      note.pendingAir = false;
+      note.deviateSince = 0;
     }
     particles = [];
     activePointers = new Map();
@@ -486,48 +615,64 @@
       canvas.width = nextWidth;
       canvas.height = nextHeight;
     }
+    needsResize = false;
   }
 
   function getLayout() {
     const width = canvas.width;
     const height = canvas.height;
     const center = width / 2;
-    const topY = height * 0.055;
-    const hitY = height * 0.79;
-    const frontY = height * 0.87;
-    const topWidth = width * 0.54;
-    const hitWidth = width * 0.54;
-    const frontWidth = width * 0.58;
+    const topY = height * 0.05;
+    const hitY = height * 0.8;
+    const frontY = height * 0.9;
+    const topWidth = width * 0.315;
+    const hitWidth = width * 0.615;
+    const frontWidth = width * 0.69;
+    const topLeft = center - topWidth / 2;
+    const topRight = center + topWidth / 2;
     const hitLeft = center - hitWidth / 2;
     const hitRight = center + hitWidth / 2;
     const frontLeft = center - frontWidth / 2;
     const frontRight = center + frontWidth / 2;
-    return { width, height, center, topY, hitY, frontY, topWidth, hitWidth, frontWidth, hitLeft, hitRight, frontLeft, frontRight };
+    return {
+      width, height, center, topY, hitY, frontY,
+      topWidth, hitWidth, frontWidth,
+      topLeft, topRight, hitLeft, hitRight, frontLeft, frontRight,
+    };
+  }
+
+  function fieldLeftAt(progress, layout) {
+    if (progress <= 1) return layout.topLeft + (layout.hitLeft - layout.topLeft) * Math.max(0, progress);
+    return layout.hitLeft + (layout.frontLeft - layout.hitLeft) * Math.min(1, progress - 1);
+  }
+
+  function fieldWidthAt(progress, layout) {
+    if (progress <= 1) return layout.topWidth + (layout.hitWidth - layout.topWidth) * Math.max(0, progress);
+    return layout.hitWidth + (layout.frontWidth - layout.hitWidth) * Math.min(1, progress - 1);
   }
 
   function pointAtLane(lane, y, layout) {
     const progress = Math.max(0, Math.min(1, (y - layout.topY) / (layout.hitY - layout.topY)));
-    const topLeft = layout.center - layout.topWidth / 2;
-    const topCell = layout.topWidth / DIVISIONS;
-    const hitCell = layout.hitWidth / DIVISIONS;
-    const xTop = topLeft + (lane + 0.5) * topCell;
-    const xHit = layout.hitLeft + (lane + 0.5) * hitCell;
-    return { x: xTop + (xHit - xTop) * progress, y };
+    const left = fieldLeftAt(progress, layout);
+    const width = fieldWidthAt(progress, layout);
+    return { x: left + ((lane + 0.5) / DIVISIONS) * width, y };
   }
 
   function laneWidthAt(note, y, layout) {
     const progress = Math.max(0, Math.min(1, (y - layout.topY) / (layout.hitY - layout.topY)));
-    const topCell = layout.topWidth / DIVISIONS;
-    const hitCell = layout.hitWidth / DIVISIONS;
-    return (topCell + (hitCell - topCell) * progress) * note.width;
+    return (fieldWidthAt(progress, layout) / DIVISIONS) * note.width;
+  }
+
+  function timeToY(time, songTime, layout) {
+    const progress = 1 - (time - songTime) / currentLeadTime;
+    const eased = Math.max(0, Math.min(1.08, progress)) ** 1.45;
+    return { y: layout.topY + (layout.hitY - layout.topY) * eased, progress: eased };
   }
 
   function projectNoteAt(lane, time, songTime, layout) {
-    const progress = 1 - (time - songTime) / currentLeadTime;
-    const eased = Math.max(0, Math.min(1.08, progress)) ** 1.45;
-    const y = layout.topY + (layout.hitY - layout.topY) * eased;
+    const { y, progress } = timeToY(time, songTime, layout);
     const point = pointAtLane(lane, y, layout);
-    return { x: point.x, y, progress: eased };
+    return { x: point.x, y, progress };
   }
 
   function holdLaneAt(note, songTime) {
@@ -537,8 +682,9 @@
   }
 
   function pointMatchesNote(point, note, layout) {
-    const minY = layout.hitY - layout.height * 0.16;
-    const maxY = layout.frontY + layout.height * 0.12;
+    const isAir = note.type === "air";
+    const minY = isAir ? layout.topY + layout.height * 0.01 : layout.hitY - layout.height * 0.16;
+    const maxY = isAir ? layout.hitY - layout.height * 0.16 : layout.frontY + layout.height * 0.12;
     if (point.y < minY || point.y > maxY) return false;
     const center = pointAtLane(note.lane, layout.hitY, layout);
     const width = laneWidthAt(note, layout.hitY, layout) + layout.hitWidth * 0.045;
@@ -549,100 +695,202 @@
     const minY = layout.hitY - layout.height * 0.16;
     const maxY = layout.frontY + layout.height * 0.12;
     if (point.y < minY || point.y > maxY) return -1;
-    const p = Math.max(0, Math.min(1, (point.y - layout.hitY) / Math.max(1, layout.frontY - layout.hitY)));
-    const left = layout.hitLeft + (layout.frontLeft - layout.hitLeft) * p;
-    const width = layout.hitWidth + (layout.frontWidth - layout.hitWidth) * p;
+    const p = Math.max(0, Math.min(1.08, (point.y - layout.topY) / Math.max(1, layout.hitY - layout.topY)));
+    const left = fieldLeftAt(p, layout);
+    const width = fieldWidthAt(p, layout);
+    if (point.x < left || point.x > left + width) return -1;
     const lane = Math.floor(((point.x - left) / width) * DIVISIONS);
     return Math.max(0, Math.min(DIVISIONS - 1, lane));
   }
 
+  function hexToRgba(hex, alpha) {
+    const value = hex.replace("#", "");
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
   function drawBackground(layout, songTime) {
-    const { width, height, topY, hitY, frontY, hitLeft, hitRight, frontLeft, frontRight } = layout;
-    const bg = ctx.createLinearGradient(0, 0, width, height);
-    bg.addColorStop(0, "#06131d");
-    bg.addColorStop(0.5, "#102b3a");
-    bg.addColorStop(1, "#07141c");
-    ctx.fillStyle = bg;
+    const { width, height, topY, hitY, frontY, topLeft, topRight, hitLeft, hitRight, frontLeft, frontRight } = layout;
+
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, "#04121b");
+    sky.addColorStop(0.42, "#0a2231");
+    sky.addColorStop(0.82, "#07161f");
+    sky.addColorStop(1, "#030c13");
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, height);
 
     ctx.save();
-    ctx.globalAlpha = 0.28;
-    ctx.strokeStyle = "#2ad7ed";
-    ctx.lineWidth = Math.max(1, width * 0.001);
-    const streakCount = effectsHigh ? 5 : 3;
-    for (let i = -streakCount; i <= streakCount; i += 1) {
-      const x = width / 2 + i * width * 0.095 + Math.sin(songTime + i) * width * 0.01;
+    ctx.globalAlpha = effectsHigh ? 0.2 : 0.12;
+    ctx.strokeStyle = "#63e9ff";
+    ctx.lineWidth = Math.max(1, width * 0.0009);
+    const streakCount = effectsHigh ? 9 : 4;
+    for (let i = 0; i < streakCount; i += 1) {
+      const y = ((songTime * 38 + i * 83) % (height * 1.4)) - height * 0.2;
+      const x = width * 0.5 + (i - streakCount / 2) * width * 0.07;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x + height * 0.15, height);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + height * 0.08, y + height * 0.26);
       ctx.stroke();
     }
     ctx.restore();
 
-    ctx.fillStyle = "rgba(1, 10, 16, 0.78)";
-    ctx.fillRect(hitLeft, topY, hitRight - hitLeft, hitY - topY);
     ctx.save();
-    ctx.strokeStyle = "rgba(110, 239, 255, 0.34)";
-    ctx.lineWidth = Math.max(1, width * 0.0012);
+    ctx.beginPath();
+    ctx.moveTo(topLeft, topY);
+    ctx.lineTo(topRight, topY);
+    ctx.lineTo(hitRight, hitY);
+    ctx.lineTo(hitLeft, hitY);
+    ctx.closePath();
+    ctx.clip();
+
+    const laneFill = ctx.createLinearGradient(0, topY, 0, hitY);
+    laneFill.addColorStop(0, "rgba(4, 18, 26, 0.94)");
+    laneFill.addColorStop(0.55, "rgba(7, 30, 42, 0.9)");
+    laneFill.addColorStop(1, "rgba(10, 44, 60, 0.88)");
+    ctx.fillStyle = laneFill;
+    ctx.fillRect(0, topY, width, hitY - topY);
+
+    const laneBrightness = Math.max(0.4, Math.min(1, (Number(cachedSettings.laneBrightness) || 100) / 100));
+    if (laneBrightness < 1) {
+      ctx.fillStyle = `rgba(2, 8, 13, ${(1 - laneBrightness) * 0.82})`;
+      ctx.fillRect(0, topY, width, hitY - topY);
+    }
+
+    const topCell = layout.topWidth / DIVISIONS;
+    const hitCell = layout.hitWidth / DIVISIONS;
     for (let i = 0; i <= DIVISIONS; i += 1) {
-      const x = hitLeft + (i / DIVISIONS) * layout.hitWidth;
+      const isEdge = i === 0 || i === DIVISIONS;
+      ctx.strokeStyle = isEdge ? "rgba(110, 239, 255, 0.6)" : "rgba(120, 232, 255, 0.18)";
+      ctx.lineWidth = Math.max(1, width * (isEdge ? 0.0022 : 0.0011));
       ctx.beginPath();
-      ctx.moveTo(x, topY);
-      ctx.lineTo(x, hitY);
-      ctx.stroke();
-    }
-    const gridLineCount = effectsHigh ? 13 : 6;
-    for (let i = 0; i <= gridLineCount; i += 1) {
-      const y = topY + ((songTime * 78 + i * ((hitY - topY) / (gridLineCount + 1))) % (hitY - topY));
-      ctx.strokeStyle = i % 4 === 0 ? "rgba(255, 220, 73, 0.4)" : "rgba(110, 239, 255, 0.16)";
-      ctx.beginPath();
-      ctx.moveTo(hitLeft, y);
-      ctx.lineTo(hitRight, y);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    ctx.save();
-    ctx.strokeStyle = "#81f3ff";
-    ctx.shadowBlur = effectsHigh ? width * 0.015 : 0;
-    ctx.shadowColor = "#29dff4";
-    ctx.lineWidth = Math.max(2, width * 0.002);
-    ctx.strokeRect(hitLeft, topY, hitRight - hitLeft, hitY - topY);
-    ctx.restore();
-
-    ctx.save();
-    ctx.fillStyle = "rgba(0, 8, 13, 0.96)";
-    ctx.strokeStyle = "#f5df4f";
-    ctx.shadowBlur = effectsHigh ? width * 0.02 : 0;
-    ctx.shadowColor = "#f5df4f";
-    ctx.lineWidth = Math.max(3, width * 0.004);
-    ctx.fillRect(frontLeft, hitY, frontRight - frontLeft, frontY - hitY);
-    ctx.strokeRect(frontLeft, hitY, frontRight - frontLeft, frontY - hitY);
-    ctx.restore();
-
-    ctx.strokeStyle = "rgba(130, 239, 255, 0.56)";
-    ctx.lineWidth = Math.max(1, width * 0.0012);
-    for (let i = 1; i < DIVISIONS * 2; i += 1) {
-      const x = frontLeft + (i / (DIVISIONS * 2)) * (frontRight - frontLeft);
-      ctx.beginPath();
-      ctx.moveTo(x, hitY);
-      ctx.lineTo(x, frontY);
+      ctx.moveTo(topLeft + i * topCell, topY);
+      ctx.lineTo(hitLeft + i * hitCell, hitY);
       ctx.stroke();
     }
 
     for (let lane = 0; lane < DIVISIONS; lane += 1) {
-      const burst = laneBursts[lane];
-      if (burst <= 0.02) continue;
-      const laneLeft = hitLeft + (lane / DIVISIONS) * layout.hitWidth;
-      const laneWidth = layout.hitWidth / DIVISIONS;
+      const burst = laneBursts[lane] || 0;
+      const left = hitLeft + lane * hitCell;
+      const glow = ctx.createLinearGradient(0, hitY - height * 0.2, 0, hitY);
+      glow.addColorStop(0, "rgba(0, 0, 0, 0)");
+      glow.addColorStop(1, hexToRgba(laneColors[lane % laneColors.length], 0.1 + burst * 0.55));
+      ctx.fillStyle = glow;
+      ctx.fillRect(left, hitY - height * 0.2, hitCell, height * 0.2);
+    }
+
+    const beat = beatSeconds;
+    const firstBeat = Math.max(0, Math.floor(songTime / beat) - 1);
+    const lastBeat = Math.ceil((songTime + currentLeadTime) / beat) + 1;
+    for (let b = firstBeat; b <= lastBeat; b += 1) {
+      if (b < 0) continue;
+      const { y, progress } = timeToY(b * beat, songTime, layout);
+      if (progress <= 0.001 || progress > 1.001) continue;
+      const measure = b % 4 === 0;
+      ctx.strokeStyle = measure ? "rgba(245, 223, 79, 0.4)" : "rgba(110, 239, 255, 0.12)";
+      ctx.lineWidth = Math.max(1, width * (measure ? 0.0018 : 0.0009));
+      const left = fieldLeftAt(progress, layout);
+      const fieldWidth = fieldWidthAt(progress, layout);
+      ctx.beginPath();
+      ctx.moveTo(left, y);
+      ctx.lineTo(left + fieldWidth, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(120, 238, 255, 0.85)";
+    ctx.shadowColor = "#29dff4";
+    ctx.shadowBlur = effectsHigh ? width * 0.012 : 0;
+    ctx.lineWidth = Math.max(2, width * 0.002);
+    ctx.beginPath();
+    ctx.moveTo(topLeft, topY);
+    ctx.lineTo(topRight, topY);
+    ctx.lineTo(hitRight, hitY);
+    ctx.lineTo(frontRight, frontY);
+    ctx.lineTo(frontLeft, frontY);
+    ctx.lineTo(hitLeft, hitY);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    const band = ctx.createLinearGradient(0, hitY - height * 0.014, 0, hitY + height * 0.014);
+    band.addColorStop(0, "rgba(255, 216, 74, 0)");
+    band.addColorStop(0.5, "rgba(255, 216, 74, 0.95)");
+    band.addColorStop(1, "rgba(255, 216, 74, 0)");
+    ctx.fillStyle = band;
+    ctx.shadowColor = "#ffd84a";
+    ctx.shadowBlur = effectsHigh ? width * 0.02 : 0;
+    ctx.fillRect(hitLeft, hitY - height * 0.014, hitRight - hitLeft, height * 0.028);
+    ctx.restore();
+
+    ctx.save();
+    const front = ctx.createLinearGradient(0, hitY, 0, frontY);
+    front.addColorStop(0, "rgba(4, 20, 30, 0.9)");
+    front.addColorStop(1, "rgba(2, 9, 14, 0.98)");
+    ctx.fillStyle = front;
+    ctx.beginPath();
+    ctx.moveTo(hitLeft, hitY);
+    ctx.lineTo(hitRight, hitY);
+    ctx.lineTo(frontRight, frontY);
+    ctx.lineTo(frontLeft, frontY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(110, 239, 255, 0.3)";
+    ctx.lineWidth = Math.max(1, width * 0.0012);
+    for (let i = 1; i < DIVISIONS; i += 1) {
+      const xTop = hitLeft + (i / DIVISIONS) * layout.hitWidth;
+      const xBottom = frontLeft + (i / DIVISIONS) * layout.frontWidth;
+      ctx.beginPath();
+      ctx.moveTo(xTop, hitY);
+      ctx.lineTo(xBottom, frontY);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    for (let lane = 0; lane < DIVISIONS; lane += 1) {
+      const burst = laneBursts[lane] || 0;
+      const left = hitLeft + lane * hitCell;
       ctx.save();
-      ctx.globalAlpha = burst * 0.55;
-      ctx.fillStyle = "#46e8ff";
-      ctx.shadowBlur = effectsHigh ? width * 0.025 : 0;
-      ctx.shadowColor = "#46e8ff";
-      ctx.fillRect(laneLeft, hitY - height * 0.012, laneWidth, frontY - hitY + height * 0.025);
+      ctx.globalAlpha = 0.3 + burst * 0.65;
+      ctx.fillStyle = laneColors[lane % laneColors.length];
+      ctx.shadowColor = laneColors[lane % laneColors.length];
+      ctx.shadowBlur = effectsHigh ? width * 0.01 : 0;
+      ctx.fillRect(left + hitCell * 0.14, hitY + height * 0.004, hitCell * 0.72, height * 0.009);
       ctx.restore();
     }
+  }
+
+  function drawLaneCover(layout) {
+    const cover = Math.max(0, Math.min(40, Number(cachedSettings.laneCover) || 0));
+    if (cover <= 0) return;
+    const height = (layout.hitY - layout.topY) * (cover / 100);
+    const progress = height / Math.max(1, layout.hitY - layout.topY);
+    const bottomLeft = fieldLeftAt(progress, layout);
+    const bottomWidth = fieldWidthAt(progress, layout);
+    ctx.save();
+    const grad = ctx.createLinearGradient(0, layout.topY, 0, layout.topY + height);
+    grad.addColorStop(0, "rgba(2, 8, 13, 0.99)");
+    grad.addColorStop(0.85, "rgba(2, 8, 13, 0.97)");
+    grad.addColorStop(1, "rgba(2, 8, 13, 0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(layout.topLeft, layout.topY);
+    ctx.lineTo(layout.topRight, layout.topY);
+    ctx.lineTo(bottomLeft + bottomWidth, layout.topY + height);
+    ctx.lineTo(bottomLeft, layout.topY + height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(110, 239, 255, 0.4)";
+    ctx.lineWidth = Math.max(1, layout.width * 0.0012);
+    ctx.beginPath();
+    ctx.moveTo(bottomLeft, layout.topY + height);
+    ctx.lineTo(bottomLeft + bottomWidth, layout.topY + height);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawHoldBody(note, layout, songTime) {
@@ -654,13 +902,14 @@
     const startWidth = laneWidthAt({ width: note.width }, start.y, layout);
     const endWidth = laneWidthAt({ width: note.width }, end.y, layout);
 
+    const isSlideNote = note.type === "slide";
     ctx.save();
     const grad = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
-    grad.addColorStop(0, "rgba(113,255,153,0.78)");
-    grad.addColorStop(1, "rgba(124,246,255,0.58)");
+    grad.addColorStop(0, isSlideNote ? "rgba(255, 168, 74, 0.85)" : "rgba(99, 255, 201, 0.85)");
+    grad.addColorStop(1, isSlideNote ? "rgba(255, 232, 160, 0.62)" : "rgba(124, 232, 255, 0.62)");
     ctx.fillStyle = grad;
     ctx.shadowBlur = effectsHigh ? layout.width * 0.022 : 0;
-    ctx.shadowColor = "#71ff99";
+    ctx.shadowColor = isSlideNote ? "#ffa84a" : "#63ffc9";
     ctx.beginPath();
     ctx.moveTo(start.x - startWidth / 2, start.y);
     ctx.lineTo(start.x + startWidth / 2, start.y);
@@ -668,25 +917,65 @@
     ctx.lineTo(end.x - endWidth / 2, end.y);
     ctx.closePath();
     ctx.fill();
+
+    if (isSlideNote) {
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255, 245, 220, 0.8)";
+      ctx.lineWidth = Math.max(1.5, layout.width * 0.0018);
+      for (let i = 1; i < 5; i += 1) {
+        const t = i / 5;
+        const arrowX = start.x + (end.x - start.x) * t;
+        const arrowY = start.y + (end.y - start.y) * t;
+        const arrowW = startWidth * 0.22;
+        ctx.beginPath();
+        ctx.moveTo(arrowX - arrowW, arrowY - arrowW * 0.5);
+        ctx.lineTo(arrowX, arrowY + arrowW * 0.4);
+        ctx.lineTo(arrowX + arrowW, arrowY - arrowW * 0.5);
+        ctx.stroke();
+      }
+    }
+
     ctx.restore();
   }
 
   function drawTapNote(note, layout, songTime) {
     const projected = projectNoteAt(note.lane, note.time, songTime, layout);
     if (projected.progress < 0 || projected.progress > 1.11) return;
-    const noteWidth = laneWidthAt(note, projected.y, layout) * 0.92;
-    const noteHeight = layout.height * (0.018 + projected.progress * 0.026);
+    const noteWidth = laneWidthAt(note, projected.y, layout) * 0.94;
+    const noteHeight = layout.height * (0.015 + projected.progress * 0.028);
     const color = noteColor(note);
 
     ctx.save();
     ctx.translate(projected.x, projected.y);
-    ctx.shadowBlur = effectsHigh ? layout.width * 0.018 : 0;
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "rgba(0, 8, 14, 0.9)";
+    roundRect(-noteWidth / 2, -noteHeight / 2 + noteHeight * 0.45, noteWidth, noteHeight, noteHeight * 0.3);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.shadowBlur = effectsHigh ? layout.width * 0.016 : 0;
     ctx.shadowColor = color;
-    ctx.fillStyle = color;
-    roundRect(-noteWidth / 2, -noteHeight / 2, noteWidth, noteHeight, noteHeight * 0.35);
+    const body = ctx.createLinearGradient(0, -noteHeight / 2, 0, noteHeight / 2);
+    body.addColorStop(0, "#ffffff");
+    body.addColorStop(0.35, color);
+    body.addColorStop(1, color);
+    ctx.fillStyle = body;
+    roundRect(-noteWidth / 2, -noteHeight / 2, noteWidth, noteHeight, noteHeight * 0.32);
     ctx.fill();
 
-    if (note.type === "flick") {
+    if (note.type === "air") {
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(238, 243, 255, 0.95)";
+      ctx.lineWidth = Math.max(2, layout.width * 0.0024);
+      for (let i = 0; i < 2; i += 1) {
+        const arrowY = -noteHeight * (0.55 + i * 0.62) - noteHeight * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(-noteWidth * 0.26, arrowY + noteHeight * 0.3);
+        ctx.lineTo(0, arrowY);
+        ctx.lineTo(noteWidth * 0.26, arrowY + noteHeight * 0.3);
+        ctx.stroke();
+      }
+    } else if (note.type === "flick") {
       ctx.strokeStyle = "rgba(255,255,255,0.9)";
       ctx.lineWidth = Math.max(2, layout.width * 0.0022);
       for (let i = 0; i < 2; i += 1) {
@@ -710,7 +999,7 @@
   function drawNotes(layout, songTime) {
     for (const note of chart) {
       if (note.missed || note.finished) continue;
-      if (note.type === "hold") {
+      if (isTrail(note)) {
         if (note.endTime - songTime > currentLeadTime || songTime - note.endTime > MISS_WINDOW) continue;
         drawHoldBody(note, layout, songTime);
       }
@@ -718,16 +1007,20 @@
 
     for (const note of chart) {
       if (note.missed || note.finished) continue;
-      if (note.type === "hold") {
+      if (isTrail(note)) {
         if (!note.started && note.time - songTime < currentLeadTime && songTime - note.time < MISS_WINDOW) {
-          drawTapNote({ ...note, type: "hold" }, layout, songTime);
+          drawTapNote({ ...note }, layout, songTime);
         }
         if (note.endTime - songTime < currentLeadTime && songTime - note.endTime < MISS_WINDOW) {
-          drawTapNote({ ...note, lane: note.endLane, time: note.endTime, type: "hold" }, layout, songTime);
+          drawTapNote({ ...note, lane: note.endLane, time: note.endTime }, layout, songTime);
         }
         continue;
       }
       if (note.time - songTime > currentLeadTime || songTime - note.time > MISS_WINDOW) continue;
+      if (note.type === "air") {
+        drawTapNote({ ...note, time: note.time + currentLeadTime * 0.3 }, layout, songTime);
+        continue;
+      }
       drawTapNote(note, layout, songTime);
     }
   }
@@ -764,16 +1057,8 @@
 
   function loop() {
     if (!loopRunning) return;
-    resizeCanvas();
+    if (needsResize) resizeCanvas();
     const layout = getLayout();
-    const settings = window.StarlightSettings.get();
-    currentLeadTime = getLeadTime(settings.noteSpeed);
-    inputOffsetSeconds = settings.inputOffsetMs / 1000;
-    effectsHigh = settings.effects !== "LOW";
-    particlesEnabled = settings.particles;
-    motionEnabled = settings.motion;
-    laneEffectEnabled = settings.laneEffect;
-    judgementVoiceEnabled = settings.judgementVoice;
 
     const songTime = rawSongTime();
 
@@ -788,6 +1073,7 @@
       drawNotes(layout, songTime);
       drawRipples();
       if (particlesEnabled) drawParticles();
+      drawLaneCover(layout);
     }
     ctx.restore();
 
@@ -805,7 +1091,6 @@
     updateRipples();
 
     if (performance.now() > judgementTimer) judgementEl.classList.remove("is-active");
-    if (performance.now() > comboTimer) comboBurstEl.classList.remove("is-active");
 
     if (state === "playing") {
       if (practiceOptions) updatePracticeLoop(songTime);
@@ -854,7 +1139,7 @@
     if (lane !== -1 && laneEffectEnabled) laneBursts[lane] = 0.85;
     spawnRipple(point.x, point.y);
     window.StarlightHaptics.trigger("tap");
-    const pointer = { id: event.pointerId, startPoint: point, point, pendingFlick: null };
+    const pointer = { id: event.pointerId, startPoint: point, point, pendingFlick: null, pendingAir: null };
     activePointers.set(event.pointerId, pointer);
     canvas.setPointerCapture?.(event.pointerId);
     const candidate = findCandidate(point);
@@ -867,37 +1152,59 @@
     pointer.point = eventToCanvasPoint(event);
     const lane = laneFromPoint(pointer.point, getLayout());
     if (lane !== -1 && laneEffectEnabled) laneBursts[lane] = Math.max(laneBursts[lane], 0.45);
+    tryFinishAir(pointer);
     tryFinishFlick(pointer);
+  }
+
+  function releaseHoldsFor(pointerId, point) {
+    const jt = judgeTime();
+    for (const note of chart) {
+      if (!isTrail(note) || note.pointerId !== pointerId || note.finished || note.missed) continue;
+      if (jt >= note.endTime - MISS_WINDOW) {
+        const remaining = Math.abs(note.endTime - jt);
+        const quality = remaining * 1000 <= HIT_WINDOWS[1].ms ? HIT_WINDOWS[0] : HIT_WINDOWS[1];
+        finishHold(note, point, quality);
+      } else {
+        failNote(note);
+      }
+    }
   }
 
   function handlePointerUp(event) {
     const pointer = activePointers.get(event.pointerId);
     if (!pointer) return;
     pointer.point = eventToCanvasPoint(event);
+    tryFinishAir(pointer);
+    cancelPendingAir(pointer);
     tryFinishFlick(pointer);
-    const jt = judgeTime();
-    for (const note of chart) {
-      if (note.type !== "hold" || note.pointerId !== event.pointerId || note.finished || note.missed) continue;
-      if (jt >= note.endTime - MISS_WINDOW) {
-        finishHold(note, pointer.point, HIT_WINDOWS[1]);
-      } else {
-        failNote(note);
-      }
-    }
+    releaseHoldsFor(event.pointerId, pointer.point);
     activePointers.delete(event.pointerId);
   }
 
   function hitKeyboardLane(lane) {
     if (state !== "playing") return;
+    const pointerId = -(100 + lane);
+    if (activePointers.has(pointerId)) return;
     const layout = getLayout();
     const point = pointAtLane(lane, layout.hitY, layout);
+    if (laneEffectEnabled) laneBursts[lane] = Math.max(laneBursts[lane], 0.6);
+    const pointer = { id: pointerId, startPoint: point, point, pendingFlick: null, pendingAir: null };
+    activePointers.set(pointerId, pointer);
     const candidate = findCandidate(point);
-    if (candidate?.note.type === "flick") {
-      hitNote(candidate.note, candidate.quality, point, timingLabelFor(candidate.delta));
+    if (candidate?.note.type === "flick" || candidate?.note.type === "air") {
+      hitNote(candidate.note, candidate.quality, point, timingLabelFor(candidate.delta), candidate.delta);
+      activePointers.delete(pointerId);
       return;
     }
-    const pointer = { id: -2, startPoint: point, point, pendingFlick: null };
     handleCandidate(candidate, point, pointer);
+  }
+
+  function releaseKeyboardLane(lane) {
+    const pointerId = -(100 + lane);
+    const pointer = activePointers.get(pointerId);
+    if (!pointer) return;
+    releaseHoldsFor(pointerId, pointer.point);
+    activePointers.delete(pointerId);
   }
 
   function showReadyOverlay(title) {
@@ -910,6 +1217,7 @@
   }
 
   function runCountdown(onComplete) {
+    const token = ++countdownToken;
     const steps = ["3", "2", "1", "GO"];
     let index = 0;
     if (readyCountEl) {
@@ -919,6 +1227,7 @@
       readyCountEl.classList.add("is-pulsing");
     }
     const tick = () => {
+      if (token !== countdownToken) return;
       index += 1;
       if (index >= steps.length) {
         onComplete();
@@ -957,18 +1266,25 @@
       pausedSongTime = rawSongTime();
       window.StarlightAudio.pause();
       showPauseOverlay();
-    } else if (state === "paused") {
-      resumeFromPause();
+      return;
     }
+    if (state === "paused" && !resumeCountdownActive) resumeFromPause();
   }
 
   function resumeFromPause() {
     if (state !== "paused") return;
-    hidePauseOverlay();
     const rate = practiceOptions ? practiceOptions.speed : 1;
-    setClock({ atSongTime: pausedSongTime, playbackRate: rate, delaySeconds: 0 });
-    state = "playing";
-    window.StarlightAudio.resume(pausedSongTime, rate);
+    hidePauseOverlay();
+    resumeCountdownActive = true;
+    showReadyOverlay("RESUME");
+    runCountdown(() => {
+      resumeCountdownActive = false;
+      setClock({ atSongTime: pausedSongTime, playbackRate: rate, delaySeconds: 0 });
+      state = "playing";
+      hideReadyOverlay();
+      window.StarlightAudio.resume(pausedSongTime, rate);
+    });
+    ensureLoopRunning();
   }
 
   function restartFromPause() {
@@ -987,6 +1303,8 @@
 
   function abort() {
     practiceOptions = null;
+    countdownToken += 1;
+    resumeCountdownActive = false;
     stopLoop();
     window.StarlightAudio.stop();
     state = "idle";
@@ -999,8 +1317,13 @@
     particles = [];
     ripples = [];
     activePointers = new Map();
+    resumeCountdownActive = false;
+    needsResize = true;
     resetStats();
     updateHud();
+    judgementEl.classList.remove("is-active");
+    judgementMainEl.textContent = "";
+    judgementSubEl.textContent = "";
     state = "ready";
     showReadyOverlay(currentSong.chart.title);
     window.StarlightAudio.stop();
@@ -1055,40 +1378,53 @@
 
   function endGame(failed) {
     state = failed ? "failed" : "cleared";
+    countdownToken += 1;
+    resumeCountdownActive = false;
     stopLoop();
     window.StarlightAudio.stop();
+    hideReadyOverlay();
+    hidePauseOverlay();
     const accuracy = computeAccuracy();
-    const rank = computeRank(accuracy);
-    const totalJudged = judgementCounts.PERFECT + judgementCounts.GREAT + judgementCounts.GOOD + judgementCounts.MISS;
-    const fullCombo = judgementCounts.MISS === 0 && totalJudged > 0;
+    const finalScore = computeScore();
+    const rank = computeRank(finalScore);
+    const judged = judgedCount();
+    const fullCombo = judgementCounts.MISS === 0 && judged > 0;
+    const allJustice = fullCombo && judgementCounts.JUSTICE === 0 && judgementCounts.ATTACK === 0;
     const scores = window.StarlightStorage.read("scores", {});
     const previous = scores[currentSong.id] || {};
     const previousBest = previous.bestScore || 0;
-    const isNewRecord = !failed && score > previousBest;
-    const bestScore = isNewRecord ? score : previousBest;
+    const isNewRecord = !failed && finalScore > previousBest;
+    const bestScore = isNewRecord ? finalScore : previousBest;
+    const avgTimingMs = timingSamples > 0 ? timingSumMs / timingSamples : 0;
     if (!failed) {
       scores[currentSong.id] = {
         bestScore,
         bestAccuracy: Math.max(accuracy, previous.bestAccuracy || 0),
-        bestRank: rank,
+        bestRank: isNewRecord || !previous.bestRank ? rank : previous.bestRank,
         fullCombo: fullCombo || Boolean(previous.fullCombo),
+        allJustice: allJustice || Boolean(previous.allJustice),
         clearedAt: Date.now(),
       };
       window.StarlightStorage.write("scores", scores);
     }
     window.StarlightScreens.showResult({
       songId: currentSong.id,
-      score,
+      score: finalScore,
       bestScore,
       isNewRecord,
       rank,
       accuracy,
-      perfect: judgementCounts.PERFECT,
-      great: judgementCounts.GREAT,
-      good: judgementCounts.GOOD,
+      critical: judgementCounts.CRITICAL,
+      justice: judgementCounts.JUSTICE,
+      attack: judgementCounts.ATTACK,
       miss: judgementCounts.MISS,
       maxCombo,
       fullCombo,
+      allJustice,
+      early: timingEarly,
+      late: timingLate,
+      timingSamples,
+      avgTimingMs,
       failed,
     });
   }
@@ -1121,20 +1457,47 @@
     quitToTitle();
   });
 
+  function isTypingTarget(target) {
+    return Boolean(target && target.closest && target.closest("input, textarea, select, [contenteditable='true']"));
+  }
+
   window.addEventListener("keydown", (event) => {
+    if (event.repeat || isTypingTarget(event.target)) return;
+    if (document.body.dataset.activeScreen !== "game") return;
     const lane = tapKeys.indexOf(event.key.toLowerCase());
     if (lane === -1) return;
     event.preventDefault();
     hitKeyboardLane(lane);
   });
 
+  window.addEventListener("keyup", (event) => {
+    if (isTypingTarget(event.target)) return;
+    const lane = tapKeys.indexOf(event.key.toLowerCase());
+    if (lane === -1) return;
+    releaseKeyboardLane(lane);
+  });
+
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && (state === "playing" || state === "paused")) togglePause();
+    if (event.key !== "Escape" || isTypingTarget(event.target)) return;
+    if (state === "playing" || state === "paused") togglePause();
   });
 
   window.addEventListener("resize", () => {
+    needsResize = true;
     if (loopRunning) resizeCanvas();
   });
+
+  window.addEventListener("orientationchange", () => {
+    needsResize = true;
+  });
+
+  applySettings(window.StarlightSettings ? window.StarlightSettings.get() : cachedSettings);
+  if (window.StarlightSettings) window.StarlightSettings.onChange(applySettings);
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(() => {
+      needsResize = true;
+    }).observe(canvas);
+  }
 
   window.StarlightGame = {
     beginPlay,

@@ -3,6 +3,10 @@
 
   let mode = "play";
   let history = [];
+  function formatScore(value) {
+    return window.StarlightFormat ? window.StarlightFormat.score(value) : String(Math.round(Number(value) || 0));
+  }
+
   let activeId = "title";
   let selection = { song: null };
 
@@ -19,6 +23,8 @@
   const practiceAutoPlayButton = document.querySelector("#practiceAutoPlay");
   const confirmModal = document.querySelector("#confirmModal");
   const confirmMessageEl = document.querySelector("#confirmMessage");
+  const splashStartButton = document.querySelector("#splashStartButton");
+  const splashProgress = document.querySelector("#splashProgress");
 
   function applyScreen(id) {
     document.querySelectorAll(".screen").forEach((el) => {
@@ -77,7 +83,7 @@
     return songs;
   }
 
-  function buildSongCard(song, bestScore) {
+  function buildSongCard(song, bestScore, bestRank) {
     const card = document.createElement("button");
     card.type = "button";
     card.className = "song-card";
@@ -87,10 +93,12 @@
     const meta = document.createElement("span");
     meta.className = "song-card-meta";
     const difficultyLabel = song.chart.difficulty || (song.editable ? "EDITED" : "STANDARD");
-    meta.textContent = `${difficultyLabel} ・ Lv.${song.chart.level ?? "??"} ・ BPM ${song.chart.bpm ?? "--"}`;
+    meta.textContent = `${difficultyLabel} ・ Lv.${song.chart.level ?? "??"} ・ BPM ${song.chart.bpm ?? "--"} ・ ${song.chart.notes.length} NOTES`;
     const best = document.createElement("span");
     best.className = "song-card-best";
-    best.textContent = `BEST ${Number(bestScore || 0).toLocaleString("ja-JP")}`;
+    best.textContent = Number(bestScore || 0) > 0
+      ? `BEST ${formatScore(bestScore)}${bestRank ? `  /  ${bestRank}` : ""}`
+      : "BEST 0";
     card.append(title, meta, best);
     return card;
   }
@@ -108,8 +116,8 @@
       return;
     }
     songs.forEach((song) => {
-      const best = scores[song.id]?.bestScore ?? 0;
-      const card = buildSongCard(song, best);
+      const entry = scores[song.id] || {};
+      const card = buildSongCard(song, entry.bestScore ?? 0, entry.bestRank);
       card.addEventListener("click", () => {
         window.StarlightHaptics?.trigger("ui");
         selectSong(song);
@@ -195,23 +203,41 @@
     const scores = getScores();
     const values = Object.values(scores).map((entry) => entry.bestScore || 0);
     const best = values.length ? Math.max(...values) : 0;
-    titleBestScoreEl.textContent = best > 0 ? String(best).padStart(8, "0") : "--------";
+    titleBestScoreEl.textContent = best > 0 ? formatScore(best) : "--------";
   }
 
   function showResult(payload) {
     document.querySelector("#resultEyebrow").textContent = payload.failed ? "LIVE FAILED" : "RESULT";
-    document.querySelector("#resultFullCombo").classList.toggle("is-visible", Boolean(payload.fullCombo) && !payload.failed);
-    document.querySelector("#resultScore").textContent = String(payload.score).padStart(8, "0");
+    const badge = document.querySelector("#resultFullCombo");
+    const special = !payload.failed && Boolean(payload.allJustice || payload.fullCombo);
+    badge.classList.toggle("is-visible", special);
+    badge.classList.toggle("is-all-justice", Boolean(payload.allJustice) && !payload.failed);
+    badge.textContent = payload.allJustice ? "ALL JUSTICE" : "FULL COMBO";
+    document.querySelector("#resultScore").textContent = formatScore(payload.score);
     const rankEl = document.querySelector("#resultRank");
     rankEl.textContent = payload.rank;
     rankEl.dataset.rank = payload.rank;
-    document.querySelector("#resultPerfect").textContent = String(payload.perfect);
-    document.querySelector("#resultGreat").textContent = String(payload.great);
-    document.querySelector("#resultGood").textContent = String(payload.good);
+    document.querySelector("#resultPerfect").textContent = String(payload.critical);
+    document.querySelector("#resultGreat").textContent = String(payload.justice);
+    document.querySelector("#resultGood").textContent = String(payload.attack);
     document.querySelector("#resultMiss").textContent = String(payload.miss);
     document.querySelector("#resultCombo").textContent = String(payload.maxCombo);
     document.querySelector("#resultAccuracy").textContent = `${payload.accuracy.toFixed(2)}%`;
-    document.querySelector("#resultBestScore").textContent = Number(payload.bestScore).toLocaleString("ja-JP");
+    document.querySelector("#resultEarly").textContent = String(payload.early ?? 0);
+    document.querySelector("#resultLate").textContent = String(payload.late ?? 0);
+    const timingHint = document.querySelector("#resultTimingHint");
+    if (payload.timingSamples >= 10 && Math.abs(payload.avgTimingMs) >= 5) {
+      const sign = payload.avgTimingMs > 0 ? "+" : "";
+      timingHint.textContent = `平均 ${sign}${payload.avgTimingMs.toFixed(1)} ms（${payload.avgTimingMs > 0 ? "LATE" : "FAST"}）・SOUND SYNC で調整できます`;
+      timingHint.classList.add("is-warning");
+    } else if (payload.timingSamples >= 10) {
+      timingHint.textContent = "タイミング良好";
+      timingHint.classList.remove("is-warning");
+    } else {
+      timingHint.textContent = "";
+      timingHint.classList.remove("is-warning");
+    }
+    document.querySelector("#resultBestScore").textContent = formatScore(payload.bestScore);
     document.querySelector("#resultNewRecord").classList.toggle("is-visible", Boolean(payload.isNewRecord));
     resetTo("result");
     window.StarlightHaptics?.trigger("result");
@@ -244,6 +270,12 @@
     showScreen("settings");
   });
 
+  document.querySelector("#titleCalibrateButton")?.addEventListener("click", () => {
+    window.StarlightHaptics?.trigger("ui");
+    window.StarlightAudio.unlock();
+    showScreen("calibrate");
+  });
+
   muteButton?.addEventListener("click", () => {
     window.StarlightAudio.unlock();
     const nextMuted = !window.StarlightAudio.isMuted();
@@ -252,7 +284,7 @@
     muteButton.setAttribute("aria-pressed", String(nextMuted));
   });
 
-  ["songSelectBackButton", "difficultyBackButton", "configBackButton", "practiceConfigBackButton", "settingsBackButton", "editorBackButton"].forEach((id) => {
+  ["songSelectBackButton", "difficultyBackButton", "configBackButton", "practiceConfigBackButton", "settingsBackButton", "calibrateBackButton", "editorBackButton"].forEach((id) => {
     document.getElementById(id)?.addEventListener("click", () => {
       window.StarlightHaptics?.trigger("ui");
       goBack();
@@ -268,6 +300,18 @@
   document.querySelector("#configOpenSettingsButton")?.addEventListener("click", () => {
     window.StarlightHaptics?.trigger("ui");
     showScreen("settings");
+  });
+
+  document.querySelector("#configCalibrateButton")?.addEventListener("click", () => {
+    window.StarlightHaptics?.trigger("ui");
+    window.StarlightAudio.unlock();
+    showScreen("calibrate");
+  });
+
+  document.querySelector("#openCalibrateButton")?.addEventListener("click", () => {
+    window.StarlightHaptics?.trigger("ui");
+    window.StarlightAudio.unlock();
+    showScreen("calibrate");
   });
 
   document.querySelector("#configReadyButton")?.addEventListener("click", () => {
@@ -332,6 +376,62 @@
   window.addEventListener("starlight-scores-reset", renderTitleBestScore);
   window.addEventListener("starlight-charts-reset", () => renderSongList());
 
+  let splashTimer = 0;
+  let splashComplete = false;
+
+  function enterFromSplash() {
+    if (splashComplete) return;
+    splashComplete = true;
+    if (splashTimer) window.clearInterval(splashTimer);
+    splashTimer = 0;
+    window.StarlightAudio?.unlock();
+    window.StarlightAudio?.playHitTone?.("tap");
+    window.StarlightHaptics?.trigger("ui");
+    resetTo("title");
+    renderTitleBestScore();
+  }
+
+  function bootSplash() {
+    const splashEl = document.querySelector(".screen-splash");
+    if (!splashEl) {
+      applyScreen("title");
+      return;
+    }
+    resetTo("splash");
+    if (splashProgress) splashProgress.style.width = "0%";
+    const startedAt = performance.now();
+    splashStartButton?.addEventListener("click", enterFromSplash);
+    splashEl.addEventListener("click", () => {
+      if (splashStartButton && splashStartButton.disabled) return;
+      enterFromSplash();
+    });
+    splashTimer = window.setInterval(() => {
+      const ratio = Math.min(1, (performance.now() - startedAt) / 1300);
+      if (splashProgress) splashProgress.style.width = `${Math.round(ratio * 100)}%`;
+      if (ratio < 1) return;
+      window.clearInterval(splashTimer);
+      splashTimer = 0;
+      if (splashStartButton) {
+        splashStartButton.disabled = false;
+        splashStartButton.textContent = "TAP TO START";
+      }
+      window.setTimeout(() => {
+        if (!splashComplete) enterFromSplash();
+      }, 4200);
+    }, 40);
+  }
+
+  function requestLandscape() {
+    const orientation = window.screen && window.screen.orientation;
+    if (!orientation || typeof orientation.lock !== "function") return;
+    try {
+      const result = orientation.lock("landscape");
+      if (result && typeof result.catch === "function") result.catch(() => {});
+    } catch {}
+  }
+
+  document.addEventListener("pointerdown", requestLandscape, { once: true });
+
   window.StarlightScreens = {
     showScreen,
     goBack,
@@ -343,7 +443,7 @@
   };
 
   renderTitleBestScore();
-  applyScreen("title");
+  bootSplash();
   if (window.MELODINIQ_CHART) {
     window.StarlightAudio.configure({ audioPath: window.MELODINIQ_CHART.audioPath, bpm: window.MELODINIQ_CHART.bpm });
   }

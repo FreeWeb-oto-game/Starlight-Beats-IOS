@@ -53,5 +53,11 @@
 
   migrateLegacyChart();
 
+  function formatScore(value) {
+    const rounded = Math.max(0, Math.round(Number(value) || 0));
+    return rounded.toLocaleString("en-US");
+  }
+
   window.StarlightStorage = { read, write, remove };
+  window.StarlightFormat = { score: formatScore };
 })();

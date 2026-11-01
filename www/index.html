@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#071925" />
     <meta name="description" content="Melodiniq (CHUNITHM X-VERSE-X / onoken a.k.a. owl＊tree) 風 8レーンタッチ音ゲーと譜面エディター" />
     <title>Starlight Beats | Melodiniq</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=1.2.0" />
   </head>
-  <body data-active-screen="title">
+  <body data-active-screen="splash">
     <main class="app-shell">
       <div class="rotate-hint" aria-hidden="true">
         <span class="rotate-icon">⤾</span>
@@ -17,15 +17,28 @@
       </div>
 
       <section class="game-stage" aria-label="Starlight Beats">
-        <section class="screen screen-title is-active" data-screen-id="title">
+        <section class="screen screen-splash is-active" data-screen-id="splash">
+          <div class="splash-beams" aria-hidden="true"></div>
+          <div class="splash-content">
+            <p class="splash-eyebrow">ST★RLIGHT BEATS</p>
+            <h1 class="splash-logo">STARLIGHT<span>BEATS</span></h1>
+            <p class="splash-tagline">ULTIMA RHYTHM SYSTEM</p>
+            <div class="splash-loader" aria-hidden="true"><span id="splashProgress"></span></div>
+            <button class="splash-start-button" id="splashStartButton" type="button" disabled>NOW LOADING</button>
+            <p class="splash-version">v1.2.0</p>
+          </div>
+        </section>
+
+        <section class="screen screen-title" data-screen-id="title">
           <div class="title-backdrop" aria-hidden="true"></div>
           <div class="title-content">
             <p class="title-eyebrow">ST★RLIGHT BEATS</p>
             <h1 class="title-logo">STARLIGHT<span>BEATS</span></h1>
-            <p class="title-version">v1.0.0</p>
+            <p class="title-version">v1.2.0</p>
             <nav class="title-menu">
               <button type="button" class="title-menu-button is-primary" id="titlePlayButton">PLAY</button>
               <button type="button" class="title-menu-button" id="titlePracticeButton">PRACTICE</button>
+              <button type="button" class="title-menu-button" id="titleCalibrateButton">SOUND SYNC</button>
               <button type="button" class="title-menu-button" id="titleEditButton">CHART EDIT</button>
               <button type="button" class="title-menu-button" id="titleSettingsButton">SETTINGS</button>
             </nav>
@@ -67,7 +80,7 @@
             </div>
             <div class="settings-row">
               <label for="configInputOffset">TIMING OFFSET</label>
-              <input type="range" id="configInputOffset" min="-100" max="100" step="1" />
+              <input type="range" id="configInputOffset" min="-150" max="150" step="1" />
               <output id="configInputOffsetValue">+0 ms</output>
             </div>
             <div class="settings-row">
@@ -90,6 +103,7 @@
                 <button type="button" data-value="LOW">LOW</button>
               </div>
             </div>
+            <button class="tool-button config-more-button" id="configCalibrateButton" type="button">音合わせ / SOUND SYNC ▸</button>
             <button class="tool-button config-more-button" id="configOpenSettingsButton" type="button">詳細設定 ▸</button>
           </div>
           <button class="start-button" id="configReadyButton" type="button">READY</button>
@@ -141,12 +155,12 @@
               </div>
               <div class="settings-row">
                 <label for="settingInputOffset">INPUT OFFSET</label>
-                <input type="range" id="settingInputOffset" min="-100" max="100" step="1" />
+                <input type="range" id="settingInputOffset" min="-150" max="150" step="1" />
                 <output id="settingInputOffsetValue">+0 ms</output>
               </div>
               <div class="settings-row">
                 <label for="settingAudioOffset">AUDIO OFFSET</label>
-                <input type="range" id="settingAudioOffset" min="-100" max="100" step="1" />
+                <input type="range" id="settingAudioOffset" min="-150" max="150" step="1" />
                 <output id="settingAudioOffsetValue">+0 ms</output>
               </div>
               <div class="settings-row">
@@ -156,6 +170,26 @@
               <div class="settings-row">
                 <label>LANE EFFECT</label>
                 <button class="toggle-button" id="settingLaneEffect" type="button" data-on="true">ON</button>
+              </div>
+            </section>
+            <section class="settings-group">
+              <h2>PLAY</h2>
+              <div class="settings-row">
+                <label>FAIL</label>
+                <button class="toggle-button" id="settingFail" type="button" data-on="false">OFF</button>
+              </div>
+              <div class="settings-row settings-row--choices">
+                <label>LANE COVER</label>
+                <div class="choice-group" id="settingLaneCover">
+                  <button type="button" data-value="0">OFF</button>
+                  <button type="button" data-value="15">15%</button>
+                  <button type="button" data-value="30">30%</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <label for="settingLaneBright">LANE BRIGHT</label>
+                <input type="range" id="settingLaneBright" min="40" max="100" step="5" />
+                <output id="settingLaneBrightValue">100%</output>
               </div>
             </section>
             <section class="settings-group">
@@ -197,6 +231,18 @@
                 </div>
               </div>
               <div class="settings-row">
+                <label>JUDGEMENT</label>
+                <button class="toggle-button" id="settingShowJudgement" type="button" data-on="true">ON</button>
+              </div>
+              <div class="settings-row">
+                <label>COMBO</label>
+                <button class="toggle-button" id="settingShowCombo" type="button" data-on="true">ON</button>
+              </div>
+              <div class="settings-row">
+                <label>FAST / LATE</label>
+                <button class="toggle-button" id="settingTimingFeedback" type="button" data-on="true">ON</button>
+              </div>
+              <div class="settings-row">
                 <label>PARTICLES</label>
                 <button class="toggle-button" id="settingParticles" type="button" data-on="true">ON</button>
               </div>
@@ -207,6 +253,13 @@
               <div class="settings-row">
                 <label>BRIGHTNESS LOCK</label>
                 <button class="toggle-button" id="settingBrightnessLock" type="button" data-on="true">ON</button>
+              </div>
+            </section>
+            <section class="settings-group">
+              <h2>SOUND SYNC</h2>
+              <p class="settings-note">実際に聞こえる音に合わせて判定タイミングを自動調整します。</p>
+              <div class="settings-row settings-row--button">
+                <button class="tool-button" id="openCalibrateButton" type="button">AUTO CALIBRATE ▸</button>
               </div>
             </section>
             <section class="settings-group settings-group--danger">
@@ -221,6 +274,50 @@
                 <button class="danger-button" id="resetChartsButton" type="button">RESET CHARTS</button>
               </div>
             </section>
+          </div>
+        </section>
+
+        <section class="screen screen-calibrate" data-screen-id="calibrate">
+          <header class="screen-header">
+            <button class="icon-back-button" id="calibrateBackButton" type="button" aria-label="Back">←</button>
+            <h1>SOUND SYNC</h1>
+          </header>
+          <div class="calibrate-body">
+            <div class="calibrate-main">
+              <button class="calibrate-pad" id="calibratePad" type="button">
+                <span class="calibrate-beat" id="calibrateBeat" aria-hidden="true"></span>
+                <strong id="calibrateCount">0 / 16</strong>
+                <small>TAP HERE ON THE BEAT</small>
+              </button>
+              <p class="calibrate-hint" id="calibrateHint">STARTを押して、メトロノームの音に合わせてパッドを16回タップしてください。</p>
+            </div>
+            <aside class="calibrate-panel">
+              <div class="calibrate-readout">
+                <span>MEASURED TIMING</span>
+                <strong id="calibrateResult">-- ms</strong>
+                <small id="calibrateTiming">NOT MEASURED</small>
+              </div>
+              <div class="settings-row">
+                <label for="calibrateBpm">BPM</label>
+                <input type="range" id="calibrateBpm" min="80" max="200" step="2" value="120" />
+                <output id="calibrateBpmValue">120</output>
+              </div>
+              <div class="settings-row">
+                <label for="calibrateInputOffset">JUDGE OFFSET</label>
+                <input type="range" id="calibrateInputOffset" min="-150" max="150" step="1" />
+                <output id="calibrateInputOffsetValue">+0 ms</output>
+              </div>
+              <div class="settings-row">
+                <label for="calibrateAudioOffset">AUDIO OFFSET</label>
+                <input type="range" id="calibrateAudioOffset" min="-150" max="150" step="1" />
+                <output id="calibrateAudioOffsetValue">+0 ms</output>
+              </div>
+              <div class="calibrate-actions">
+                <button class="start-button" id="calibrateStartButton" type="button">START</button>
+                <button class="tool-button" id="calibrateApplyButton" type="button" disabled>APPLY RESULT</button>
+                <button class="tool-button" id="calibrateClearButton" type="button">CLEAR</button>
+              </div>
+            </aside>
           </div>
         </section>
 
@@ -255,13 +352,13 @@
                 <label>STEP<input id="noteStepInput" type="number" min="0" max="15" step="1" value="0" /></label>
                 <label>LANE<input id="noteLaneInput" type="number" min="1" max="8" step="1" value="4" /></label>
                 <label>WIDTH<input id="noteWidthInput" type="number" min="1" max="8" step="1" value="1" /></label>
-                <label>TYPE<select id="noteTypeInput"><option value="tap">TAP</option><option value="gold">EX TAP</option><option value="flick">FLICK</option><option value="hold">HOLD</option></select></label>
+                <label>TYPE<select id="noteTypeInput"><option value="tap">TAP</option><option value="gold">EX TAP</option><option value="flick">FLICK</option><option value="hold">HOLD</option><option value="air">AIR</option><option value="slide">SLIDE</option></select></label>
                 <label>END M.<input id="noteEndMeasureInput" type="number" min="1" max="999" step="1" value="2" /></label>
                 <label>END STEP<input id="noteEndStepInput" type="number" min="0" max="15" step="1" value="0" /></label>
                 <label>END LANE<input id="noteEndLaneInput" type="number" min="1" max="8" step="1" value="4" /></label>
               </div>
               <button class="add-note-button" id="addNoteButton" type="button">ADD NOTE</button>
-              <p class="editor-tip">グリッドをタップしてTAPを追加。ノーツ一覧から削除できます。UNDO / REDOで操作を取り消せます。</p>
+              <p class="editor-tip">グリッドをタップしてTAPを追加。AIRは空中の上スワイプ、SLIDEは頭を取ってから終点まで指で追従するノーツです（END M. / END STEPはHOLD・SLIDEで使用）。</p>
             </aside>
           </div>
           <section class="note-list-panel">
@@ -273,7 +370,7 @@
         <section class="screen screen-game" data-screen-id="game">
           <canvas id="gameCanvas" width="1600" height="900" aria-label="Rhythm game lane"></canvas>
           <div class="score-hud" aria-live="polite">
-            <div class="rank-badge"><strong id="rank">D</strong><span>RATING</span></div>
+            <div class="rank-badge"><strong id="rank">D</strong><span>RANK</span></div>
             <div class="score-board">
               <div class="score-topline"><span>SCORE</span><span id="chartLabel">MELODINIQ</span></div>
               <div class="score-rail" aria-hidden="true"><span id="scoreProgress"></span></div>
@@ -290,7 +387,7 @@
             <strong id="judgementMain"></strong>
             <span id="judgementSub"></span>
           </div>
-          <div class="combo-burst" id="comboBurst" aria-live="polite"><strong id="combo">0</strong><span>COMBO</span></div>
+          <div class="combo-hud" id="comboHud" aria-live="polite"><strong id="comboCounter">0</strong><span>COMBO</span></div>
           <div class="ready-overlay" id="readyOverlay">
             <p class="ready-song-title" id="readySongTitle"></p>
             <span class="ready-count" id="readyCount">3</span>
@@ -313,20 +410,23 @@
             <h2 class="result-score" id="resultScore">00000000</h2>
             <div class="result-rank" id="resultRank" data-rank="D">D</div>
             <div class="result-breakdown">
-              <div><span>PERFECT</span><strong id="resultPerfect">0</strong></div>
-              <div><span>GREAT</span><strong id="resultGreat">0</strong></div>
-              <div><span>GOOD</span><strong id="resultGood">0</strong></div>
+              <div><span>JUSTICE CRITICAL</span><strong id="resultPerfect">0</strong></div>
+              <div><span>JUSTICE</span><strong id="resultGreat">0</strong></div>
+              <div><span>ATTACK</span><strong id="resultGood">0</strong></div>
               <div><span>MISS</span><strong id="resultMiss">0</strong></div>
             </div>
             <div class="result-stats">
               <div><span>MAX COMBO</span><strong id="resultCombo">0</strong></div>
               <div><span>ACCURACY</span><strong id="resultAccuracy">0.00%</strong></div>
+              <div><span>EARLY</span><strong id="resultEarly">0</strong></div>
+              <div><span>LATE</span><strong id="resultLate">0</strong></div>
             </div>
             <div class="result-best">
               <span>BEST SCORE</span>
               <strong id="resultBestScore">0</strong>
               <span class="result-new-record" id="resultNewRecord">NEW RECORD</span>
             </div>
+            <p class="result-timing" id="resultTimingHint"></p>
             <div class="result-actions">
               <button type="button" class="start-button" id="resultRetryButton">RETRY</button>
               <button type="button" class="tool-button" id="resultSongSelectButton">SONG SELECT</button>
@@ -347,13 +447,14 @@
       </form>
     </dialog>
 
-    <script src="storage.js"></script>
-    <script src="haptics.js"></script>
-    <script src="settings.js"></script>
-    <script src="audio.js"></script>
-    <script src="lane-map.js"></script>
-    <script src="screens.js"></script>
-    <script src="game.js"></script>
-    <script src="editor.js"></script>
+    <script src="storage.js?v=1.2.0"></script>
+    <script src="haptics.js?v=1.2.0"></script>
+    <script src="settings.js?v=1.2.0"></script>
+    <script src="audio.js?v=1.2.0"></script>
+    <script src="lane-map.js?v=1.2.0"></script>
+    <script src="screens.js?v=1.2.0"></script>
+    <script src="calibrate.js?v=1.2.0"></script>
+    <script src="game.js?v=1.2.0"></script>
+    <script src="editor.js?v=1.2.0"></script>
   </body>
 </html>

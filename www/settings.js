@@ -15,6 +15,12 @@
     particles: true,
     motion: true,
     brightnessLock: true,
+    failEnabled: false,
+    showJudgement: true,
+    showCombo: true,
+    timingFeedback: true,
+    laneCover: 0,
+    laneBrightness: 100,
   };
 
   let settings = { ...DEFAULT_SETTINGS, ...window.StarlightStorage.read("settings", {}) };
@@ -187,8 +193,21 @@
   bindToggle("settingParticles", "particles");
   bindToggle("settingMotion", "motion");
   bindToggle("settingBrightnessLock", "brightnessLock");
+  bindToggle("settingFail", "failEnabled");
+  bindToggle("settingShowJudgement", "showJudgement");
+  bindToggle("settingShowCombo", "showCombo");
+  bindToggle("settingTimingFeedback", "timingFeedback");
+  bindChoiceGroup("settingLaneCover", "laneCover");
+  bindRange("settingLaneBright", "settingLaneBrightValue", "laneBrightness", formatPercent);
 
   onChange((current) => window.StarlightAudio?.applyVolumes(current));
+
+  onChange((current) => {
+    document.body.classList.toggle("is-fail-off", !current.failEnabled);
+    document.body.classList.toggle("is-judgement-off", !current.showJudgement);
+    document.body.classList.toggle("is-combo-off", !current.showCombo);
+    document.body.classList.toggle("is-timing-off", !current.timingFeedback);
+  });
 
   document.getElementById("resetScoresButton")?.addEventListener("click", async () => {
     const confirmed = await window.StarlightScreens?.confirm("スコア記録をすべて削除しますか？");
